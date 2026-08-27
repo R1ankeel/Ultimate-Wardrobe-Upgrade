@@ -1,0 +1,51 @@
+# Architecture
+
+## Overview
+
+UltimateWardrobe is a standalone Windows desktop application (.NET 10 LTS, WPF) that converts donor mod archives into a single MO2-ready replacer without touching load order or game balance. Only the visual layer (ARMA / mesh / texture / physics / BodySlide) is replaced.
+
+## Solution Layout
+
+```
+UltimateWardrobe.sln
+├── src/UltimateWardrobe.Core        # Domain POCOs + enums + invariants + abstractions (no I/O)
+├── src/UltimateWardrobe.Archives    # P/Invoke over 7z.dll / UnRAR64.dll, signature detection, recursion
+├── src/UltimateWardrobe.Scanner     # (Phase 1) Mutagen folder scanner
+├── src/UltimateWardrobe.DonorLibrary# (Phase 2) donor classification
+├── src/UltimateWardrobe.Mapping     # (Phase 3) manual mapping + patch detection
+├── src/UltimateWardrobe.Persistence # (Phase 4) SQLite
+├── src/UltimateWardrobe.Patcher     # (Phase 5) ESP patcher + file slicer
+├── src/UltimateWardrobe.App         # (Phase 6) WPF
+└── tests/UltimateWardrobe.Tests     # xUnit + FluentAssertions
+```
+
+Dependency rule: `Core` depends on nothing. All other `src/*` depend only on `Core` (+ their own external lib). `App` depends on all.
+
+## Key Abstractions (Phase 0)
+
+```csharp
+interface IArchiveExtractor { Task<ExtractResult> ExtractAsync(string archivePath, string destDir, CancellationToken ct); }
+interface ICatalogScanner   { Task<Catalog> ScanAsync(CatalogSource source, CancellationToken ct); }
+interface IDonorClassifier  { Task<DonorAsset> ClassifyAsync(string extractedDir, Catalog catalogHint, CancellationToken ct); }
+interface IProjectStore     { Task SaveAsync(Project project); Task<Project> LoadAsync(string projectDbPath); }
+interface IPatcher          { Task<PatchResult> BuildAsync(Overhaul overhaul, string outputDir, CancellationToken ct); }
+```
+
+## Runtime Requirements
+
+- Windows x64, .NET 10 SDK 10.0.100+
+- Native `runtimes/win-x64/native/7z.dll` + `UnRAR64.dll` shipped alongside the app
+
+## Build Properties
+
+Centralized in `Directory.Build.props`:
+
+- `TargetFramework = net10.0-windows`
+- `LangVersion = 13`, `Nullable = enable`, `ImplicitUsings = enable`, `TreatWarningsAsErrors = true`
+
+Per-project `global.json` pins SDK to `10.0.100` (`rollForward: latestFeature`).
+
+## Future Docs
+
+- `Docs/domain-model.md` - domain invariants and fixtures (Sprint 0.1)
+- `Docs/archive-layer.md` - P/Invoke details, recursion, safety (Sprint 0.2)

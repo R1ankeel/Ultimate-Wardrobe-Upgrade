@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/UltimateWardrobe.Archives/UltimateWardrobe.Archives.csproj" />
+    <Project Path="src/UltimateWardrobe.Core/UltimateWardrobe.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/UltimateWardrobe.Tests/UltimateWardrobe.Tests.csproj" />
+  </Folder>
+</Solution>
