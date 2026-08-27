@@ -1,0 +1,193 @@
+using UltimateWardrobe.Core.Domain;
+using UltimateWardrobe.Core.Enums;
+using UltimateWardrobe.Scanner;
+using Xunit;
+
+namespace UltimateWardrobe.Tests.Scanner;
+
+public sealed class ArmorSetGrouperTests
+{
+    private static GroupingResult BuildGrouping(TestTempDir dir, out List<ScanWarning> warnings)
+    {
+        return GroupingTestHarness.Group(dir, out warnings);
+    }
+
+    private static int SkippedFor(GroupingResult result, SkipReason reason)
+    {
+        return result.SkippedByReason.TryGetValue(reason, out var count) ? count : 0;
+    }
+
+    [Fact]
+    public void OutfitDrivenIronSet_GroupsWithoutEditorIdHints()
+    {
+        using var dir = new TestTempDir();
+        var result = BuildGrouping(dir, out _);
+
+        var set = Assert.Single(result.Sets, s => s.Id == "ironarmor");
+        Assert.Equal("Iron Armor", set.DisplayName);
+        Assert.Equal(3, set.Members.Count);
+        Assert.Contains(set.Members, m => m.EditorId == "0A2C8841");
+        Assert.Contains(set.Members, m => m.EditorId == "0A2C8842");
+        Assert.Contains(set.Members, m => m.EditorId == "0A2C8843");
+
+        foreach (var pieceEditorId in new[] { "0A2C8841", "0A2C8842", "0A2C8843" })
+        {
+            Assert.DoesNotContain(result.Sets, s => s.Id == pieceEditorId.ToLowerInvariant());
+        }
+    }
+
+    [Fact]
+    public void SplitMembershipSet_LandsInOneArmorSet_NeverFragments()
+    {
+        using var dir = new TestTempDir();
+        var result = BuildGrouping(dir, out _);
+
+        var containingSets = result.Sets
+            .Where(s => s.Members.Any(m => m.EditorId.Contains("NordicCarved")))
+            .ToList();
+
+        Assert.Single(containingSets);
+
+        var set = containingSets[0];
+        Assert.Equal("nordiccarved", set.Id);
+        Assert.Equal("Nordic Carved", set.DisplayName);
+
+        var pieceEditorIds = set.Members.Select(m => m.EditorId).OrderBy(e => e, StringComparer.Ordinal).ToList();
+        Assert.Equal(
+            new[]
+            {
+                "DLC2NordicCarvedBoots",
+                "DLC2NordicCarvedCuirass",
+                "DLC2NordicCarvedGauntlets",
+                "DLC2NordicCarvedHelmet",
+            },
+            pieceEditorIds);
+    }
+
+    [Fact]
+    public void SplitMembershipSet_SharedGauntletsAndBoots_DoNotLeakIntoOtherSets()
+    {
+        using var dir = new TestTempDir();
+        var result = BuildGrouping(dir, out _);
+
+        foreach (var setId in new[] { "aasharedset", "leather", "ironarmor" })
+        {
+            var otherSet = Assert.Single(result.Sets, s => s.Id == setId);
+            Assert.DoesNotContain(otherSet.Members, m => m.EditorId == "DLC2NordicCarvedGauntlets");
+            Assert.DoesNotContain(otherSet.Members, m => m.EditorId == "DLC2NordicCarvedBoots");
+        }
+    }
+
+    [Fact]
+    public void FallbackEdidSets_GroupByNormalizedEditorId()
+    {
+        using var dir = new TestTempDir();
+        var result = BuildGrouping(dir, out _);
+
+        var leather = Assert.Single(result.Sets, s => s.Id == "leather");
+        Assert.Equal("Leather", leather.DisplayName);
+        Assert.Equal(2, leather.Members.Count);
+
+        Assert.Equal(
+            new[] { "ArmorLeatherCuirass", "ArmorLeatherGauntlets" },
+            leather.Members.Select(m => m.EditorId).OrderBy(e => e, StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void CreatureSkin_SkippedAsCreatureRace_AndNeverAppearsAsSet()
+    {
+        using var dir = new TestTempDir();
+        var result = BuildGrouping(dir, out _);
+
+        Assert.DoesNotContain(result.Sets, s => s.Members.Any(m => m.EditorId == "Boar"));
+        Assert.Equal(1, SkippedFor(result, SkipReason.CreatureRace));
+    }
+
+    [Fact]
+    public void VampireRaceArmor_NeverSkipped_AndGroupsNormally()
+    {
+        using var dir = new TestTempDir();
+        var result = BuildGrouping(dir, out _);
+
+        var set = Assert.Single(result.Sets, s => s.Id == "vampirerobes");
+        Assert.Single(set.Members);
+        Assert.Equal("ClothesVampireRobes", set.Members[0].EditorId);
+
+        Assert.Equal(1, SkippedFor(result, SkipReason.CreatureRace));
+    }
+
+    [Fact]
+    public void MultiOutfitArmor_LandsInDeterministicSingleSet()
+    {
+        using var dir = new TestTempDir();
+        var result = BuildGrouping(dir, out _);
+
+        var set = Assert.Single(result.Sets, s => s.Id == "aasharedset");
+        Assert.Equal("Aa Shared Set", set.DisplayName);
+        var member = Assert.Single(set.Members);
+        Assert.Equal("SharedBoots", member.EditorId);
+
+        Assert.DoesNotContain(result.Sets, s => s.Id == "zzsharedset");
+    }
+
+    [Fact]
+    public void GarbageFiltering_PerReasonSkipCounts()
+    {
+        using var dir = new TestTempDir();
+        var result = BuildGrouping(dir, out _);
+
+        Assert.Equal(1, SkippedFor(result, SkipReason.CreatureRace));
+        Assert.Equal(1, SkippedFor(result, SkipReason.NoArmature));
+        Assert.Equal(1, SkippedFor(result, SkipReason.EmptyModel));
+        Assert.Equal(1, SkippedFor(result, SkipReason.NoSlot));
+        Assert.Equal(1, SkippedFor(result, SkipReason.NoKeyword));
+        Assert.Equal(0, SkippedFor(result, SkipReason.Other));
+
+        Assert.Equal(5, result.SkippedByReason.Values.Sum());
+
+        foreach (var skippedEditorId in new[] { "DanglingOnly", "EmptyModelBoots", "NoSlotRing", "NakedBody", "Boar" })
+        {
+            Assert.DoesNotContain(result.Sets, s => s.Members.Any(m => m.EditorId == skippedEditorId));
+        }
+    }
+
+    [Fact]
+    public void UnresolvableArmaRace_Warns_AndRecordKept()
+    {
+        using var dir = new TestTempDir();
+        var result = BuildGrouping(dir, out var warnings);
+
+        Assert.Single(result.Sets, s => s.Id == "mystery" && s.Members.Count == 1);
+        Assert.Equal(1, SkippedFor(result, SkipReason.CreatureRace));
+
+        Assert.Contains(warnings, w => w.Message.Contains("could not be resolved")
+                                      && w.Message.Contains("race") && w.EditorId == "MysteryGauntlets");
+    }
+
+    [Fact]
+    public void MembersOrderedBySlotThenEditorId()
+    {
+        using var dir = new TestTempDir();
+        var result = BuildGrouping(dir, out _);
+
+        var iron = Assert.Single(result.Sets, s => s.Id == "ironarmor");
+        Assert.Equal(
+            new[] { "0A2C8841", "0A2C8842", "0A2C8843" },
+            iron.Members.Select(m => m.EditorId));
+
+        var nordic = Assert.Single(result.Sets, s => s.Id == "nordiccarved");
+        Assert.Equal(
+            new[] { "DLC2NordicCarvedHelmet", "DLC2NordicCarvedCuirass", "DLC2NordicCarvedGauntlets", "DLC2NordicCarvedBoots" },
+            nordic.Members.Select(m => m.EditorId));
+    }
+
+    [Fact]
+    public void SetsOrderedDeterministicallyById()
+    {
+        using var dir = new TestTempDir();
+        var result = BuildGrouping(dir, out _);
+
+        var ids = result.Sets.Select(s => s.Id).ToList();
+        Assert.Equal(ids.OrderBy(i => i, StringComparer.Ordinal), ids);
+    }
+}

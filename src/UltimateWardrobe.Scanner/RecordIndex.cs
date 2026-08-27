@@ -13,17 +13,26 @@ public sealed class RecordIndex
     private readonly Dictionary<FormKey, IArmorAddonGetter> _arma;
     private readonly Dictionary<FormKey, IKeywordGetter> _keyword;
     private readonly Dictionary<FormKey, ITextureSetGetter> _textureSet;
+    private readonly Dictionary<FormKey, IRaceGetter> _race;
+    private readonly Dictionary<FormKey, IOutfitGetter> _outfit;
+    private readonly Dictionary<FormKey, HashSet<FormKey>> _outfitsByArmor;
 
     private RecordIndex(
         Dictionary<FormKey, IArmorGetter> armor,
         Dictionary<FormKey, IArmorAddonGetter> arma,
         Dictionary<FormKey, IKeywordGetter> keyword,
-        Dictionary<FormKey, ITextureSetGetter> textureSet)
+        Dictionary<FormKey, ITextureSetGetter> textureSet,
+        Dictionary<FormKey, IRaceGetter> race,
+        Dictionary<FormKey, IOutfitGetter> outfit,
+        Dictionary<FormKey, HashSet<FormKey>> outfitsByArmor)
     {
         _armor = armor;
         _arma = arma;
         _keyword = keyword;
         _textureSet = textureSet;
+        _race = race;
+        _outfit = outfit;
+        _outfitsByArmor = outfitsByArmor;
     }
 
     public int ArmorCount => _armor.Count;
@@ -34,9 +43,44 @@ public sealed class RecordIndex
 
     public int TextureSetCount => _textureSet.Count;
 
+    public int RaceCount => _race.Count;
+
+    public int OutfitCount => _outfit.Count;
+
     public IEnumerable<IArmorGetter> EnumerateArmor() => _armor.Values;
 
     public IEnumerable<IArmorAddonGetter> EnumerateArmorAddons() => _arma.Values;
+
+    public bool TryResolveRace(FormKey key, out IRaceGetter record)
+    {
+        if (_race.TryGetValue(key, out var race))
+        {
+            record = race;
+            return true;
+        }
+
+        record = null!;
+        return false;
+    }
+
+    public bool TryResolveOutfit(FormKey key, out IOutfitGetter record)
+    {
+        if (_outfit.TryGetValue(key, out var outfit))
+        {
+            record = outfit;
+            return true;
+        }
+
+        record = null!;
+        return false;
+    }
+
+    public IReadOnlySet<FormKey> OutfitsForArmor(FormKey armorKey)
+    {
+        return _outfitsByArmor.TryGetValue(armorKey, out var set)
+            ? set
+            : new HashSet<FormKey>();
+    }
 
     public bool TryResolveArmor(FormKey key, out IArmorGetter record)
     {
@@ -93,6 +137,7 @@ public sealed class RecordIndex
         var keyword = new Dictionary<FormKey, IKeywordGetter>();
         var textureSet = new Dictionary<FormKey, ITextureSetGetter>();
         var referencedTextureSets = new HashSet<FormKey>();
+        var referencedRaces = new HashSet<FormKey>();
 
         foreach (var mod in orderedMods)
         {
@@ -114,6 +159,7 @@ public sealed class RecordIndex
                 {
                     arma[entry.Key] = entry.Value;
                     CollectSkinTextureSetKeys(entry.Value, referencedTextureSets);
+                    CollectRaceKey(entry.Value, referencedRaces);
                 }
             }
             catch (Exception ex)
@@ -156,7 +202,71 @@ public sealed class RecordIndex
             }
         }
 
-        return new RecordIndex(armor, arma, keyword, textureSet);
+        var race = new Dictionary<FormKey, IRaceGetter>();
+        var outfit = new Dictionary<FormKey, IOutfitGetter>();
+        var outfitsByArmor = new Dictionary<FormKey, HashSet<FormKey>>();
+
+        foreach (var mod in orderedMods)
+        {
+            try
+            {
+                foreach (var entry in mod.Overlay.Races.RecordCache)
+                {
+                    if (referencedRaces.Contains(entry.Key))
+                    {
+                        race[entry.Key] = entry.Value;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                warnings.Add(IndexWarning(mod, ex));
+            }
+
+            try
+            {
+                foreach (var entry in mod.Overlay.Outfits.RecordCache)
+                {
+                    outfit[entry.Key] = entry.Value;
+                    if (entry.Value.Items is null)
+                    {
+                        continue;
+                    }
+
+                    foreach (var item in entry.Value.Items)
+                    {
+                        var memberArmorKey = item.FormKey;
+                        if (memberArmorKey.IsNull)
+                        {
+                            continue;
+                        }
+
+                        if (!outfitsByArmor.TryGetValue(memberArmorKey, out var members))
+                        {
+                            members = new HashSet<FormKey>();
+                            outfitsByArmor[memberArmorKey] = members;
+                        }
+
+                        members.Add(entry.Key);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                warnings.Add(IndexWarning(mod, ex));
+            }
+        }
+
+        return new RecordIndex(armor, arma, keyword, textureSet, race, outfit, outfitsByArmor);
+    }
+
+    private static void CollectRaceKey(IArmorAddonGetter arma, HashSet<FormKey> referencedRaces)
+    {
+        var raceLink = arma.Race;
+        if (raceLink is not null && !raceLink.FormKey.IsNull)
+        {
+            referencedRaces.Add(raceLink.FormKey);
+        }
     }
 
     private static void CollectSkinTextureSetKeys(IArmorAddonGetter arma, HashSet<FormKey> referencedTextureSets)

@@ -1,3 +1,5 @@
+using UltimateWardrobe.Core.Enums;
+
 namespace UltimateWardrobe.Core.Domain;
 
 public sealed class ScanStats
@@ -7,6 +9,12 @@ public sealed class ScanStats
     public int GroupedSets { get; init; }
     public int Skipped { get; init; }
     public int MissingFiles { get; init; }
+
+    /// <summary>
+    /// Optional per-reason breakdown of <see cref="Skipped"/>. When present its values must
+    /// sum to <see cref="Skipped"/>.
+    /// </summary>
+    public IReadOnlyDictionary<SkipReason, int> SkippedByReason { get; init; } = new Dictionary<SkipReason, int>();
 }
 
 public sealed class ScanWarning

@@ -90,6 +90,7 @@ Standalone application for building full visual replacers for Skyrim SE armor an
   - Sprint 1.0 scaffolding + spike - done (`UltimateWardrobe.Scanner` scaffolded, real `Skyrim.esm` read path proven via overlay, spike conclusions + Slot/gender-signal freezes recorded in `Plans/phase1.md`)
   - Sprint 1.1 plugin loading + RecordIndex - done (`PluginDiscovery`, `LoadOrderBuilder`, `ModLoader`, `RecordIndex`; synthetic pair maps a main-plugin FormID to the override record, corrupt plugin does not abort the scan; 121 tests green)
   - Sprint 1.2 ARMO -> ARMA -> files correlation - done (`FileResolver` path matrix, `ArmorCorrelator` pre-Piece with mesh/texture paths from TXST, unresolved-link/missing-master warnings never abort; 134 tests green)
+  - Sprint 1.3 ArmorSet grouping heuristic - done (`PlayableRaceFilter` creature-skin pre-filter, `OutfitSetKeyResolver` Outfit-first signal with EDID/mesh fallback, `KeyNormalizer` + `PieceTypeDetector`, `ArmorSetGrouper` with per-reason skip breakdown; split-membership set lands in ONE `ArmorSet`; 226 tests green)
 
 ## Stack
 
@@ -126,6 +127,7 @@ dotnet test
 - `Docs/architecture.md` - architecture overview
 - `Docs/domain-model.md` - domain model (Sprint 0.1 - done)
 - `Docs/archive-layer.md` - archive layer (Sprint 0.2 - done)
+- `Docs/scanner.md` - folder catalog scanner, grouping heuristics (Sprint 1.3 - done)
 
 ## Test Assets
 
