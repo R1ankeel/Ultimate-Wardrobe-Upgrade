@@ -10,7 +10,7 @@ UltimateWardrobe is a standalone Windows desktop application (.NET 10 LTS, WPF) 
 UltimateWardrobe.sln
 ├── src/UltimateWardrobe.Core        # Domain POCOs + enums + invariants + abstractions (no I/O)
 ├── src/UltimateWardrobe.Archives    # P/Invoke over 7z.dll / UnRAR64.dll, signature detection, recursion
-├── src/UltimateWardrobe.Scanner     # Mutagen.Bethesda.Skyrim 0.54.4 folder catalog scanner (Sprint 1.1: plugin discovery, load order, record index)
+├── src/UltimateWardrobe.Scanner     # Mutagen.Bethesda.Skyrim 0.54.4 folder catalog scanner (Sprint 1.2: plugin discovery + load order + record index + ARMO->ARMA->files correlation)
 ├── src/UltimateWardrobe.DonorLibrary# (Phase 2) donor classification
 ├── src/UltimateWardrobe.Mapping     # (Phase 3) manual mapping + patch detection
 ├── src/UltimateWardrobe.Persistence # (Phase 4) SQLite

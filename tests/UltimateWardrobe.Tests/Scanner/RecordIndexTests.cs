@@ -50,8 +50,8 @@ public sealed class RecordIndexTests
         Assert.True(index.TryResolveArmorAddon(SyntheticSkyrimMods.MainArmorAddonKey, out var addon));
         Assert.Equal("BaseArmorAA", addon.EditorID);
 
-        Assert.Equal(2, index.ArmorCount);
-        Assert.Equal(1, index.ArmorAddonCount);
+        Assert.Equal(4, index.ArmorCount);
+        Assert.Equal(2, index.ArmorAddonCount);
     }
 
     [Fact]
@@ -75,7 +75,11 @@ public sealed class RecordIndexTests
 
         Assert.True(index.TryResolveTextureSet(SyntheticSkyrimMods.MasterTextureSetKey, out var textureSet));
         Assert.Equal("txSetMaster", textureSet.EditorID);
-        Assert.Equal(1, index.TextureSetCount);
+
+        Assert.True(index.TryResolveTextureSet(SyntheticSkyrimMods.MeshTextureSetKey, out var meshSet));
+        Assert.Equal("txSetIron", meshSet.EditorID);
+
+        Assert.Equal(2, index.TextureSetCount);
     }
 
     [Fact]

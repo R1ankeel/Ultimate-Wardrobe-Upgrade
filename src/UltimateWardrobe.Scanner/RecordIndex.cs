@@ -34,6 +34,10 @@ public sealed class RecordIndex
 
     public int TextureSetCount => _textureSet.Count;
 
+    public IEnumerable<IArmorGetter> EnumerateArmor() => _armor.Values;
+
+    public IEnumerable<IArmorAddonGetter> EnumerateArmorAddons() => _arma.Values;
+
     public bool TryResolveArmor(FormKey key, out IArmorGetter record)
     {
         if (_armor.TryGetValue(key, out var armor))

@@ -1,6 +1,9 @@
 using Mutagen.Bethesda.Plugins;
+using Mutagen.Bethesda.Plugins.Assets;
 using Mutagen.Bethesda.Plugins.Records;
 using Mutagen.Bethesda.Skyrim;
+using Mutagen.Bethesda.Skyrim.Assets;
+using Noggog;
 
 namespace UltimateWardrobe.Tests.Scanner;
 
@@ -52,6 +55,24 @@ internal static class SyntheticSkyrimMods
 
     public static FormKey MainArmorAddonKey => new(MainKey, 0x830);
 
+    public static FormKey MeshTextureSetKey => new(MasterKey, 0x870);
+
+    public static FormKey MeshArmorKey => new(MainKey, 0x850);
+
+    public static FormKey MeshAddonKey => new(MainKey, 0x860);
+
+    public static FormKey DanglingArmorKey => new(MainKey, 0x880);
+
+    public static FormKey DanglingAddonKey => new(MainKey, 0x881);
+
+    public static string MeshPath => "meshes/armor/iron/cuirass_1.nif";
+
+    public static string MeshDiffusePath => "textures/armor/iron/cuirass_1.dds";
+
+    public static string MeshNormalPath => "textures/armor/iron/cuirass_1_n.dds";
+
+    public static string MeshGlowPath => "textures/armor/iron/gold.dds";
+
     public static string WriteMaster(string directory)
     {
         var master = new SkyrimMod(MasterKey, SkyrimRelease.SkyrimSE);
@@ -64,6 +85,12 @@ internal static class SyntheticSkyrimMods
         master.Keywords.Add(new Keyword(WeightKeywordKey, SkyrimRelease.SkyrimSE) { EditorID = "ArmorHeavy" });
         master.Keywords.Add(new Keyword(NonWeightKeywordKey, SkyrimRelease.SkyrimSE) { EditorID = "VendorItemClothing" });
         master.TextureSets.Add(new TextureSet(MasterTextureSetKey, SkyrimRelease.SkyrimSE) { EditorID = "txSetMaster" });
+
+        var meshTextureSet = new TextureSet(MeshTextureSetKey, SkyrimRelease.SkyrimSE) { EditorID = "txSetIron" };
+        meshTextureSet.Diffuse = MakeTexturePath(MeshDiffusePath);
+        meshTextureSet.NormalOrGloss = MakeTexturePath(MeshNormalPath);
+        meshTextureSet.GlowOrDetailMap = MakeTexturePath(MeshGlowPath);
+        master.TextureSets.Add(meshTextureSet);
 
         var path = Path.Combine(directory, MasterFileName);
         master.WriteToBinary(path);
@@ -95,9 +122,52 @@ internal static class SyntheticSkyrimMods
                 new FormLinkNullable<ITextureSetGetter>(MasterTextureSetKey)),
         });
 
+        var meshAddon = new ArmorAddon(MeshAddonKey, SkyrimRelease.SkyrimSE)
+        {
+            EditorID = "IronCuirassAA",
+            BodyTemplate = new BodyTemplate { FirstPersonFlags = BipedObjectFlag.Body, ArmorType = ArmorType.HeavyArmor },
+            WorldModel = new GenderedItem<Model?>(
+                MakeModel(MeshPath),
+                MakeModel(MeshPath)),
+            SkinTexture = new GenderedItem<IFormLinkNullableGetter<ITextureSetGetter>>(
+                new FormLinkNullable<ITextureSetGetter>(MeshTextureSetKey),
+                new FormLinkNullable<ITextureSetGetter>(MeshTextureSetKey)),
+        };
+        main.ArmorAddons.Add(meshAddon);
+
+        main.Armors.Add(new Armor(MeshArmorKey, SkyrimRelease.SkyrimSE)
+        {
+            EditorID = "IronCuirass",
+            BodyTemplate = new BodyTemplate { FirstPersonFlags = BipedObjectFlag.Body, ArmorType = ArmorType.HeavyArmor },
+            Armature = new ExtendedList<IFormLinkGetter<IArmorAddonGetter>> { new FormLink<IArmorAddonGetter>(MeshAddonKey) },
+        });
+
+        main.Armors.Add(new Armor(DanglingArmorKey, SkyrimRelease.SkyrimSE)
+        {
+            EditorID = "DanglingGauntlets",
+            BodyTemplate = new BodyTemplate { FirstPersonFlags = BipedObjectFlag.Hands, ArmorType = ArmorType.HeavyArmor },
+            Armature = new ExtendedList<IFormLinkGetter<IArmorAddonGetter>> { new FormLink<IArmorAddonGetter>(DanglingAddonKey) },
+        });
+
         var path = Path.Combine(directory, MainFileName);
         main.WriteToBinary(path);
         return path;
+    }
+
+    private static Model MakeModel(string path)
+    {
+        var model = new Model();
+        var file = new AssetLink<SkyrimModelAssetType>();
+        file.TrySetPath(path);
+        model.File = file;
+        return model;
+    }
+
+    private static AssetLink<SkyrimTextureAssetType> MakeTexturePath(string path)
+    {
+        var link = new AssetLink<SkyrimTextureAssetType>();
+        link.TrySetPath(path);
+        return link;
     }
 
     public static string WriteChainPlugin(string directory, string fileName, params string[] masterFileNames)
