@@ -103,11 +103,17 @@ internal static class SyntheticGroupingUniverse
 
     public static FormKey HeavyKeywordKey => new(Mod, 0x990);
 
+    public static FormKey LightKeywordKey => new(Mod, 0x991);
+
+    public static FormKey ClothingKeywordKey => new(Mod, 0x992);
+
     public static string Write(string directory)
     {
         var mod = new SkyrimMod(Mod, SkyrimRelease.SkyrimSE);
 
         mod.Keywords.Add(new Keyword(HeavyKeywordKey, SkyrimRelease.SkyrimSE) { EditorID = "ArmorHeavy" });
+        mod.Keywords.Add(new Keyword(LightKeywordKey, SkyrimRelease.SkyrimSE) { EditorID = "ArmorLight" });
+        mod.Keywords.Add(new Keyword(ClothingKeywordKey, SkyrimRelease.SkyrimSE) { EditorID = "ArmorClothing" });
 
         mod.Races.Add(new Race(BoarRaceKey, SkyrimRelease.SkyrimSE) { EditorID = "BoarRace" });
         mod.Races.Add(new Race(NordVampireRaceKey, SkyrimRelease.SkyrimSE) { EditorID = "NordVampire" });

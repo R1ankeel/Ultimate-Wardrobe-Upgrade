@@ -43,6 +43,21 @@ internal static class GroupingTestHarness
         return new ArmorSetGrouper().Group(correlated, index, warnings);
     }
 
+    /// <summary>
+    /// Runs the full Sprint 1.3 + 1.4 pipeline: index -> correlation -> grouping -> variant
+    /// assembly, returning the assembled <see cref="ArmorSet"/>s together with the index.
+    /// </summary>
+    public static IReadOnlyList<UltimateWardrobe.Core.Domain.ArmorSet> Assemble(
+        TestTempDir dir,
+        out List<ScanWarning> warnings,
+        out RecordIndex index)
+    {
+        index = BuildIndex(dir, out warnings);
+        var correlated = new ArmorCorrelator().Correlate(index, warnings);
+        var grouping = new ArmorSetGrouper().Group(correlated, index, warnings);
+        return VariantAssembler.Assemble(grouping, index, warnings);
+    }
+
     public static CorrelatedArmor CorrelateOne(TestTempDir dir, FormKey armorKey, out List<ScanWarning> warnings)
     {
         var index = BuildIndex(dir, out warnings);

@@ -1,6 +1,6 @@
 # Folder Catalog Scanner
 
-> Phase 1, Sprints 1.0-1.3 done - `src/UltimateWardrobe.Scanner` - Mutagen folder-only reading, ARMO -> ARMA -> files correlation, ArmorSet grouping heuristics.
+> Phase 1, Sprints 1.0-1.4 done - `src/UltimateWardrobe.Scanner` - Mutagen folder-only reading, ARMO -> ARMA -> files correlation, ArmorSet grouping, gender/weight variant assembly.
 
 ## Overview
 
@@ -23,6 +23,9 @@ All reading goes through Mutagen binary overlays (`SkyrimMod.CreateFromBinaryOve
 | `PieceTypeDetector.cs:1` | Piece-type word from EDID suffix + BOD2 slot cross-check |
 | `OutfitSetKeyResolver.cs:1` | OTFT membership -> priority set key (deterministic tie-break) |
 | `ArmorSetGrouper.cs:1` | Creature pre-filter -> Outfit-first -> EDID/mesh fallback -> `GroupedSet`s + skip counts |
+| `BipedSlotMapper.cs:1` | Frozen BOD2 slot table (from planning 1.0.5), `SlotIndex` + `ToSlotString` |
+| `GenderWeightDetector.cs:1` | WeightClass from KEYW (ArmorType bonus), gender from ID/mesh/ARMA signals |
+| `VariantAssembler.cs:1` | `(Gender, Weight)` variants per `ArmorSet`, piece split + ordering |
 
 ## RecordIndex (Sprint 1.1 + 1.3.0)
 
@@ -56,15 +59,41 @@ No-ARMA -> `NoArmature`, every ARMA empty model -> `EmptyModel`, no BOD2 slot ->
 
 ## Ordering
 
-Sets ordered by normalized Id (ordinal). Members within a set ordered by BOD2 slot order (Head, Hair, Body, Hands, Forearms, Amulet, Ring, Feet, Calves, Shield, Tail, LongHair, Circlet, Ears) then by EditorId. Deterministic across scans.
+Sets ordered by normalized Id (ordinal). Members within a set ordered by BOD2 slot order (Head, Hair, Body, Hands, Forearms, Amulet, Ring, Feet, Calves, Shield, Tail, LongHair, Circlet, Ears) then by EditorId - via `BipedSlotMapper.SlotIndex`. Deterministic across scans.
+
+## Gender / Weight split (Sprint 1.4)
+
+### WeightClass (WeightClothing, ArmorType bonus)
+
+`GenderWeightDetector.DetectWeight` resolves WeightClass from keywords first, priority Heavy > Light > Clothing. Without a weight keyword it falls back to `BodyTemplate.ArmorType` (`HeavyArmor` -> Heavy, `LightArmor` -> Light, `Clothing` -> Clothing), and without either it returns `Any`. An unresolvable keyword link leaves the record at this fallback, never `Any` prematurely.
+
+### Gender (signals)
+
+Explicit markers win before any ARMA signal reading:
+
+1. EditorID suffix tokens, longest first, case-insensitive: `_female`, `-female`, `_male`, `-male`, `female`, `male`, `_f`, `-f`, `_m`, `-m`.
+2. ARMA mesh path folder segments (`female` or `male`); both genders present in the same path is ambiguous and falls through to signals.
+
+Then ARMA signals per gender side: a non-null `WorldModel.{Gender}.File` OR the `WeightSliderEnabled.{Gender}` bool. A gender side counts as present when either signal is true. Then `RaceGenderHint` (RACE EditorID contains `female`/`male`). If nothing resolves, gender is `Unisex` with a `ScanWarning` (`Unisex` variants are skipped by the catalog scanner by design; on a real vanilla scan the signal set effectively never leaves an unresolved side).
+
+### Variant assembly
+
+`VariantAssembler.Assemble` turns one `ArmorSet` into variants - one per (Gender, Weight) combination. The same ARMO backed by two gender-specific ARMA yields two Pieces (same EditorId, different gender) - matching `PieceMapping.UniqueKey` (`OverhaulId + TargetPieceEditorId + TargetGender`). Pieces are slot-ordered via `BipedSlotMapper`, tie-broken by EditorId. An unrecognized BOD2 flag set falls back to a `BODT {uint}` slot string instead of failing.
+
+Frozen `Piece.Slot` format (planning 1.0.5) is produced by `BipedSlotMapper.ToSlotString`: `"{BODTnumber} {Name}"`, e.g. `32 Body`, `33 Hands`, `37 Feet`.
+
+### Mutagen notes (probes)
+
+`AssetLink<SkyrimModelAssetType>.TrySetPath` returns false for bare filenames without a folder (e.g. `male.nif`) - test fixtures must use full paths like `meshes/armor/iron/cuirass_1.nif`. In-memory writers round-trip `WeightSliderEnabled` bools immediately, but a `Model.File` assigned to a writer object only becomes visible through a parse/read.
 
 ## Tests
 
-- `tests/UltimateWardrobe.Tests/Scanner/` - unit suites for discovery, order, indexing, correlation, and the full grouping pipeline.
+- `tests/UltimateWardrobe.Tests/Scanner/` - unit suites for discovery, order, indexing, correlation, grouping, and variant assembly.
 - `SyntheticGroupingUniverse.cs` - runtime mini-plugin via the Mutagen writer: an Outfit-driven set (Iron), a split-membership set (Nordic Carved), a fallback set (Leather), a creature-skin record (Boar), a vampire-race record, a multi-outfit armor, an unresolvable-race record, and one record per garbage skip reason.
 - Sprint 1.3 suite (92 tests) includes the explicit never-fragment assertion for the split-membership set and per-reason skip-count tracking.
+- Sprint 1.4 suite (44 new tests) covers the slot table + ordering, the weight matrix (keyword priority, ArmorType bonus, Any), gender signals (explicit ID/mesh, model + slider signals, race hint, ambiguous mesh, Unisex fallback with warning), the Iron acceptance (Male Heavy + Female Heavy variants, `0A2C8841/0A2C8842/0A2C8843` on `32 Body`/`33 Hands`/`37 Feet`, same EditorId across genders), same-ARMO two-piece output, determinism, and the `BODT {uint}` raw-slot fallback.
 - Real-game tests are `[Trait("Category","Integration")]` and skip automatically when the game folder is absent.
 
 ## Status
 
-Scans are complete up to `GroupedSet` (pre-gender/weight split). Next: Sprint 1.4 (`GenderWeightDetector`, `BipedSlotMapper`, variant assembly), then catalog assembly, cache, and goldens (Sprints 1.5-1.6).
+Scans are complete up to `VariantAssembler` (per-set `(Gender, Weight)` variants, unisex by design). Next: Sprint 1.5 (catalog model + cache), then goldens (Sprint 1.6) and the real vanilla tuning pass (Sprint 1.7).

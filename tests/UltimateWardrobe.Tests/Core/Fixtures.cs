@@ -28,7 +28,7 @@ internal static class Fixtures
 
     public static ArmorSet CreateArmorSet(string id = "IronArmor", string displayName = "Iron Armor")
     {
-        var piece = new Piece("ArmorIronCuirass", 0x00012E46, "Body", "AA_IronCuirass", "armor/iron/cuirass.nif");
+        var piece = new Piece("ArmorIronCuirass", 0x00012E46, "32 Body", "AA_IronCuirass", "armor/iron/cuirass.nif");
         var variant = new Variant(Gender.Male, WeightClass.Heavy, new[] { piece });
         return new ArmorSet(id, displayName, new[] { variant });
     }

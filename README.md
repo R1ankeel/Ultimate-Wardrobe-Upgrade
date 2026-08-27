@@ -91,6 +91,7 @@ Standalone application for building full visual replacers for Skyrim SE armor an
   - Sprint 1.1 plugin loading + RecordIndex - done (`PluginDiscovery`, `LoadOrderBuilder`, `ModLoader`, `RecordIndex`; synthetic pair maps a main-plugin FormID to the override record, corrupt plugin does not abort the scan; 121 tests green)
   - Sprint 1.2 ARMO -> ARMA -> files correlation - done (`FileResolver` path matrix, `ArmorCorrelator` pre-Piece with mesh/texture paths from TXST, unresolved-link/missing-master warnings never abort; 134 tests green)
   - Sprint 1.3 ArmorSet grouping heuristic - done (`PlayableRaceFilter` creature-skin pre-filter, `OutfitSetKeyResolver` Outfit-first signal with EDID/mesh fallback, `KeyNormalizer` + `PieceTypeDetector`, `ArmorSetGrouper` with per-reason skip breakdown; split-membership set lands in ONE `ArmorSet`; 226 tests green)
+  - Sprint 1.4 Gender / Weight split - done (`BipedSlotMapper` frozen slot table, `GenderWeightDetector` weight from KEYW with ArmorType bonus + gender from ID/mesh/ARMA signals with Unisex fallback warning, `VariantAssembler` one variant per (Gender, Weight) with same-ARMO two-Piece split; Iron acceptance produces Male Heavy + Female Heavy; 270 tests green)
 
 ## Stack
 
@@ -127,7 +128,7 @@ dotnet test
 - `Docs/architecture.md` - architecture overview
 - `Docs/domain-model.md` - domain model (Sprint 0.1 - done)
 - `Docs/archive-layer.md` - archive layer (Sprint 0.2 - done)
-- `Docs/scanner.md` - folder catalog scanner, grouping heuristics (Sprint 1.3 - done)
+- `Docs/scanner.md` - folder catalog scanner, grouping + gender/weight variants (Sprint 1.4 - done)
 
 ## Test Assets
 

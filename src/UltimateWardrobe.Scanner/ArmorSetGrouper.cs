@@ -36,24 +36,6 @@ public sealed record GroupingResult
 /// </summary>
 public sealed class ArmorSetGrouper
 {
-    private static readonly IReadOnlyList<BipedObjectFlag> SlotOrder =
-    [
-        BipedObjectFlag.Head,
-        BipedObjectFlag.Hair,
-        BipedObjectFlag.Body,
-        BipedObjectFlag.Hands,
-        BipedObjectFlag.Forearms,
-        BipedObjectFlag.Amulet,
-        BipedObjectFlag.Ring,
-        BipedObjectFlag.Feet,
-        BipedObjectFlag.Calves,
-        BipedObjectFlag.Shield,
-        BipedObjectFlag.Tail,
-        BipedObjectFlag.LongHair,
-        BipedObjectFlag.Circlet,
-        BipedObjectFlag.Ears,
-    ];
-
     public GroupingResult Group(
         IEnumerable<CorrelatedArmor> correlated,
         RecordIndex index,
@@ -190,15 +172,7 @@ public sealed class ArmorSetGrouper
 
     private static int SlotIndex(BipedObjectFlag flags)
     {
-        for (var i = 0; i < SlotOrder.Count; i++)
-        {
-            if (flags.HasFlag(SlotOrder[i]))
-            {
-                return i;
-            }
-        }
-
-        return int.MaxValue;
+        return BipedSlotMapper.SlotIndex(flags);
     }
 
     private static void Track(Dictionary<SkipReason, int> skipped, SkipReason reason)
