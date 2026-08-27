@@ -37,11 +37,19 @@ public sealed class Catalog
     public ScanStats Stats { get; init; }
     public IReadOnlyList<ScanWarning> Warnings { get; init; }
 
-    public Catalog(CatalogSource source, IReadOnlyList<ArmorSet> sets, ScanStats? stats = null, IReadOnlyList<ScanWarning>? warnings = null)
+    /// <summary>
+    /// Post-scan report attached by <see cref="Scanner"/> runs (Sprint 1.7). Null when the
+    /// catalog was produced outside a scan (e.g. deserialized before the report feature, or
+    /// hand-built). Serialization skips it when null.
+    /// </summary>
+    public ScanReport? Report { get; init; }
+
+    public Catalog(CatalogSource source, IReadOnlyList<ArmorSet> sets, ScanStats? stats = null, IReadOnlyList<ScanWarning>? warnings = null, ScanReport? report = null)
     {
         Source = source ?? throw new ArgumentNullException(nameof(source));
         Sets = sets ?? throw new ArgumentNullException(nameof(sets));
         Stats = stats ?? new ScanStats();
         Warnings = warnings ?? Array.Empty<ScanWarning>();
+        Report = report;
     }
 }

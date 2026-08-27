@@ -41,10 +41,13 @@ public sealed record GroupingResult
 
 /// <summary>
 /// Groups raw correlated ARMO records into <see cref="GroupedSet"/>s (Sprint 1.3.5). The
-/// pipeline: creature-skin pre-filter (<see cref="PlayableRaceFilter"/>) -> Outfit-first stage
-/// (<see cref="OutfitSetKeyResolver"/>) -> EDID/mesh fallback stage (<see cref="KeyNormalizer"/>)
-/// -> group merge, with garbage filtering into <see cref="SkipReason"/> counts and deterministic
-/// ordering (sets by Id, members by BOD2 slot order then EditorId).
+/// pipeline: creature-skin pre-filter (<see cref="PlayableRaceFilter"/>) -> candidate-key
+/// collection (EDID/mesh fallback key plus every normalized Outfit key, Sprint 1.7.3) ->
+/// wardrobe-outfit filtering (multi-family NPC wardrobes are dropped, Sprint 1.7.3) ->
+/// community merge -> agreement rule (each community picks the candidate key with the most
+/// member agreement; ties prefer Outfit-originating keys, then alphabetical) -> group merge,
+/// with garbage filtering into <see cref="SkipReason"/> counts and deterministic ordering (sets
+/// by Id, members by BOD2 slot order then EditorId).
 /// </summary>
 public sealed class ArmorSetGrouper
 {
@@ -55,8 +58,8 @@ public sealed class ArmorSetGrouper
         CancellationToken cancellationToken = default)
     {
         var skipped = new Dictionary<SkipReason, int>();
-        var byKey = new SortedDictionary<string, GroupedSet>(StringComparer.Ordinal);
-        var viaOutfit = new Dictionary<string, bool>();
+        var accepted = new List<CorrelatedArmor>();
+        var candidates = new List<CandidateKeySet>();
 
         foreach (var armor in correlated)
         {
@@ -75,35 +78,18 @@ public sealed class ArmorSetGrouper
                 continue;
             }
 
-            var (key, usedOutfit) = ResolveKey(armor, index);
-            if (key is null)
+            var candidate = CollectCandidates(armor, index);
+            if (candidate is null)
             {
                 Track(skipped, SkipReason.Other);
                 continue;
             }
 
-            if (usedOutfit)
-            {
-                viaOutfit[key.Id] = true;
-            }
-
-            if (!byKey.TryGetValue(key.Id, out var set))
-            {
-                set = new GroupedSet { Id = key.Id, DisplayName = key.DisplayName, Members = new List<CorrelatedArmor>() };
-                byKey[key.Id] = set;
-            }
-
-            ((List<CorrelatedArmor>)set.Members).Add(armor);
+            accepted.Add(armor);
+            candidates.Add(candidate);
         }
 
-        var sets = byKey.Values
-            .OrderBy(s => s.Id, StringComparer.Ordinal)
-            .Select(s => s with
-            {
-                GroupedViaOutfit = viaOutfit.GetValueOrDefault(s.Id, false),
-                Members = OrderMembers(s.Members),
-            })
-            .ToList();
+        var sets = MergeByAgreement(accepted, candidates);
 
         return new GroupingResult
         {
@@ -111,6 +97,216 @@ public sealed class ArmorSetGrouper
             SkippedByReason = skipped,
             OutfitGroupedSetCount = sets.Count(s => s.GroupedViaOutfit),
         };
+    }
+
+    private static CandidateKeySet CollectCandidates(CorrelatedArmor armor, RecordIndex index)
+    {
+        var edidKey = KeyNormalizer.NormalizeEditorId(armor.EditorId)
+                      ?? KeyNormalizer.NormalizeMeshFolder(armor.MeshPath);
+        if (edidKey is null)
+        {
+            return null!;
+        }
+
+        var outfitKeys = OutfitSetKeyResolver.ResolveAll(armor.Armor, index);
+
+        var keys = new List<NormalizedSetKey> { edidKey };
+        keys.AddRange(outfitKeys);
+        var distinct = keys.DistinctBy(k => k.Id, StringComparer.Ordinal).ToList();
+
+        return new CandidateKeySet
+        {
+            Keys = distinct,
+            OutfitIds = outfitKeys.Select(k => k.Id).ToHashSet(StringComparer.Ordinal),
+        };
+    }
+
+    /// <summary>
+    /// Merges accepted armors into sets: armors sharing any candidate key form a community
+    /// (union-find), then each community is decided by the agreement rule - the candidate key
+    /// with the most member votes; ties prefer Outfit-originating keys, then the ordinal-first
+    /// key. A shared EDID base (e.g. all plain Iron pieces) or a shared Outfit (e.g. the
+    /// split-membership half) keeps a full kit in ONE set. Multi-family "wardrobe" outfit keys
+    /// are filtered out first so vanilla NPC outfits cannot tie unrelated families together.
+    /// </summary>
+    private static List<GroupedSet> MergeByAgreement(IReadOnlyList<CorrelatedArmor> accepted, IReadOnlyList<CandidateKeySet> candidates)
+    {
+        candidates = FilterWardrobeOutfits(candidates);
+
+        var parent = new int[accepted.Count];
+        var keyToIndex = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        for (var i = 0; i < accepted.Count; i++)
+        {
+            parent[i] = i;
+            foreach (var key in candidates[i].Keys)
+            {
+                if (keyToIndex.TryGetValue(key.Id, out var other))
+                {
+                    Union(parent, i, other);
+                }
+                else
+                {
+                    keyToIndex[key.Id] = i;
+                }
+            }
+        }
+
+        var groups = new Dictionary<int, List<int>>();
+        for (var i = 0; i < accepted.Count; i++)
+        {
+            var root = Find(parent, i);
+            if (!groups.TryGetValue(root, out var members))
+            {
+                members = new List<int>();
+                groups[root] = members;
+            }
+
+            members.Add(i);
+        }
+
+        var byKey = new SortedDictionary<string, GroupedSet>(StringComparer.Ordinal);
+        var viaOutfit = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var group in groups.Values)
+        {
+            var winner = Winner(group, candidates);
+            var usedOutfit = group.Any(i => candidates[i].OutfitIds.Contains(winner.Id));
+            if (usedOutfit)
+            {
+                viaOutfit.Add(winner.Id);
+            }
+
+            if (!byKey.TryGetValue(winner.Id, out var set))
+            {
+                set = new GroupedSet { Id = winner.Id, DisplayName = winner.DisplayName, Members = new List<CorrelatedArmor>() };
+                byKey[winner.Id] = set;
+            }
+
+            ((List<CorrelatedArmor>)set.Members).AddRange(group.Select(i => accepted[i]));
+        }
+
+        return byKey.Values
+            .Select(s => s with
+            {
+                GroupedViaOutfit = viaOutfit.Contains(s.Id),
+                Members = OrderMembers(s.Members),
+            })
+            .ToList();
+    }
+
+    /// <summary>
+    /// Removes "wardrobe" outfit keys - Outfit EditorIDs that carry armor from several distinct
+    /// EDID families and where not every carrier has that Outfit as its only Outfit signal
+    /// (vanilla NPC wardrobes like cwmission04outfitimperial mix Iron/Steel/Leather, so they
+    /// must not tie unrelated families into one mega-set). An Outfit key is kept verbatim when
+    /// all its carriers share one family, or when all its carriers are exclusively in it (the
+    /// OUTFIT-driven iron set from Sprints 1.3.4/1.3.6 has anonymous piece EDIDs and survives).
+    /// </summary>
+    private static IReadOnlyList<CandidateKeySet> FilterWardrobeOutfits(IReadOnlyList<CandidateKeySet> candidates)
+    {
+        var carriersByOutfit = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+        for (var i = 0; i < candidates.Count; i++)
+        {
+            foreach (var outfitId in candidates[i].OutfitIds)
+            {
+                if (!carriersByOutfit.TryGetValue(outfitId, out var carriers))
+                {
+                    carriers = new List<int>();
+                    carriersByOutfit[outfitId] = carriers;
+                }
+
+                carriers.Add(i);
+            }
+        }
+
+        var drop = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var pair in carriersByOutfit)
+        {
+            var carriers = pair.Value;
+
+            var families = new HashSet<string>(StringComparer.Ordinal);
+            var allExclusive = true;
+            foreach (var i in carriers)
+            {
+                families.Add(candidates[i].Keys[0].Id);
+                if (candidates[i].OutfitIds.Count != 1)
+                {
+                    allExclusive = false;
+                }
+            }
+
+            if (families.Count > 1 && !allExclusive)
+            {
+                drop.Add(pair.Key);
+            }
+        }
+
+        if (drop.Count == 0)
+        {
+            return candidates;
+        }
+
+        var filtered = new List<CandidateKeySet>(candidates.Count);
+        foreach (var candidate in candidates)
+        {
+            var keys = candidate.Keys
+                .Where(k => !candidate.OutfitIds.Contains(k.Id) || !drop.Contains(k.Id))
+                .ToList();
+            var outfits = candidate.OutfitIds.Where(id => !drop.Contains(id)).ToHashSet(StringComparer.Ordinal);
+            filtered.Add(candidate with { Keys = keys, OutfitIds = outfits });
+        }
+
+        return filtered;
+    }
+
+    private static NormalizedSetKey Winner(List<int> group, IReadOnlyList<CandidateKeySet> candidates)
+    {
+        var votes = new Dictionary<string, int>(StringComparer.Ordinal);
+        var displayNames = new Dictionary<string, string>(StringComparer.Ordinal);
+        var outfitPresent = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var i in group)
+        {
+            outfitPresent.UnionWith(candidates[i].OutfitIds);
+            foreach (var key in candidates[i].Keys)
+            {
+                votes[key.Id] = votes.TryGetValue(key.Id, out var count) ? count + 1 : 1;
+                displayNames.TryAdd(key.Id, key.DisplayName);
+            }
+        }
+
+        var max = votes.Values.Count == 0 ? 0 : votes.Values.Max();
+        var contenders = votes.Where(kv => kv.Value == max).Select(kv => kv.Key).ToList();
+
+        var outfitContenders = contenders.Where(k => outfitPresent.Contains(k)).ToList();
+        if (outfitContenders.Count > 0)
+        {
+            contenders = outfitContenders;
+        }
+
+        var winnerId = contenders.OrderBy(k => k, StringComparer.Ordinal).First();
+        return new NormalizedSetKey { Id = winnerId, DisplayName = displayNames[winnerId] };
+    }
+
+    private static int Find(int[] parent, int x)
+    {
+        while (parent[x] != x)
+        {
+            parent[x] = parent[parent[x]];
+            x = parent[x];
+        }
+
+        return x;
+    }
+
+    private static void Union(int[] parent, int a, int b)
+    {
+        var ra = Find(parent, a);
+        var rb = Find(parent, b);
+        if (ra != rb)
+        {
+            parent[ra] = rb;
+        }
     }
 
     private static bool TrySkipCreature(CorrelatedArmor armor, RecordIndex index, List<ScanWarning> warnings)
@@ -180,18 +376,6 @@ public sealed class ArmorSetGrouper
         return false;
     }
 
-    private static (NormalizedSetKey? Key, bool UsedOutfit) ResolveKey(CorrelatedArmor armor, RecordIndex index)
-    {
-        var outfit = OutfitSetKeyResolver.Resolve(armor.Armor, index);
-        if (outfit.Key is not null)
-        {
-            return (outfit.Key, true);
-        }
-
-        return (KeyNormalizer.NormalizeEditorId(armor.EditorId)
-            ?? KeyNormalizer.NormalizeMeshFolder(armor.MeshPath), false);
-    }
-
     private static IReadOnlyList<CorrelatedArmor> OrderMembers(IReadOnlyList<CorrelatedArmor> members)
     {
         return members
@@ -208,5 +392,12 @@ public sealed class ArmorSetGrouper
     private static void Track(Dictionary<SkipReason, int> skipped, SkipReason reason)
     {
         skipped[reason] = skipped.TryGetValue(reason, out var count) ? count + 1 : 1;
+    }
+
+    private sealed record CandidateKeySet
+    {
+        public required IReadOnlyList<NormalizedSetKey> Keys { get; init; }
+
+        public required HashSet<string> OutfitIds { get; init; }
     }
 }

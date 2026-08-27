@@ -28,7 +28,9 @@ public sealed class CatalogGoldenTests : IDisposable
 
     /// <summary>
     /// Serializes a catalog with the source <c>rootPath</c> replaced by a fixed placeholder so
-    /// golden output is reproducible across machines, temp directories, and CI checkouts.
+    /// golden output is reproducible across machines, temp directories, and CI checkouts. The
+    /// derived post-scan report is stripped - goldens capture the catalog data contract
+    /// (source/sets/stats/warnings), not reporting derived from it.
     /// </summary>
     private static string Serialize(Catalog catalog)
     {
@@ -38,6 +40,7 @@ public sealed class CatalogGoldenTests : IDisposable
             source["rootPath"] = NormalizedRootPath;
         }
 
+        node.Remove("report");
         return node.ToJsonString();
     }
 

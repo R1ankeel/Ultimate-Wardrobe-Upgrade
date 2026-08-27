@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using UltimateWardrobe.Core.Abstractions;
@@ -6,12 +7,12 @@ using UltimateWardrobe.Core.Domain;
 namespace UltimateWardrobe.Scanner;
 
 /// <summary>
-/// End-to-end <see cref="ICatalogScanner"/> implementation (Sprint 1.5.1): orchestrates the
+/// End-to-end <see cref="ICatalogScanner"/> implementation: orchestrates the
 /// 1.1-1.4 pipeline - plugin discovery, masters-first ordering, overlay loading, record index,
 /// ARMO-&gt;ARMA-&gt;files correlation, ArmorSet grouping and gender/weight variant assembly -
-/// into a deterministic <see cref="Catalog"/>. Cancellation is checked between plugins and
-/// between record groups. The whole scan is synchronous under the <see cref="Task"/> contract
-/// (no thread affinity, no <see cref="SynchronizationContext"/> capture).
+/// into a deterministic <see cref="Catalog"/> (Sprint 1.5.1, catalog report 1.7.2). Cancellation
+/// is checked between plugins and between record groups. The whole scan is synchronous under the
+/// <see cref="Task"/> contract (no thread affinity, no <see cref="SynchronizationContext"/> capture).
 /// </summary>
 public sealed class FolderCatalogScanner : ICatalogScanner
 {
@@ -49,14 +50,40 @@ public sealed class FolderCatalogScanner : ICatalogScanner
         cancellationToken.ThrowIfCancellationRequested();
         LastReport = null;
 
+        var scanId = Guid.NewGuid().ToString("N");
+        _logger.LogInformation(
+            "Scan {ScanId} started; source kind {SourceKind}, root path {RootPath}",
+            scanId,
+            source.Kind,
+            source.RootPath);
+
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            _logger.LogDebug(
+                "Scan {ScanId}: source details - main plugin {MainPlugin}, masters [{Masters}]",
+                scanId,
+                source is StoryModCatalogSource story ? story.MainPlugin : "(n/a)",
+                source is StoryModCatalogSource story2 ? string.Join(", ", story2.Masters) : "(n/a)");
+        }
+
+        var watch = Stopwatch.StartNew();
         var warnings = new List<ScanWarning>();
 
-        var discovery = ScanReport.Guard("discovering plugins", null, () => new PluginDiscovery().Discover(source, warnings));
+        var discovery = ScanReportBuilder.Guard("discovering plugins", null, () => new PluginDiscovery().Discover(source, warnings));
+
+        foreach (var master in discovery.MissingExplicitMasters)
+        {
+            _logger.LogWarning(
+                "Scan {ScanId}: missing master '{MasterFileName}' requested by main plugin '{MainPlugin}'",
+                scanId,
+                master.FileName,
+                source is StoryModCatalogSource story3 ? story3.MainPlugin : "(n/a)");
+        }
 
         cancellationToken.ThrowIfCancellationRequested();
 
         var loader = new ModLoader();
-        var loadOrder = ScanReport.Guard(
+        var loadOrder = ScanReportBuilder.Guard(
             "building the artificial load order",
             null,
             () => new LoadOrderBuilder(loader).Build(discovery, warnings, cancellationToken));
@@ -68,36 +95,55 @@ public sealed class FolderCatalogScanner : ICatalogScanner
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var mod = loader.TryLoad(plugin.AbsolutePath, warnings);
-                if (mod is not null)
+                if (mod is null)
                 {
-                    loaded.Add(mod);
+                    _logger.LogWarning(
+                        "Scan {ScanId}: plugin '{PluginPath}' failed to load and was skipped",
+                        scanId,
+                        plugin.AbsolutePath);
+                    continue;
                 }
+
+                _logger.LogDebug(
+                    "Scan {ScanId}: plugin '{PluginFileName}' loaded ({LoadedIndex}/{LoadedCount})",
+                    scanId,
+                    plugin.ModKey.FileName,
+                    loaded.Count + 1,
+                    loadOrder.Count);
+                loaded.Add(mod);
             }
 
-            var index = ScanReport.Guard(
+            var index = ScanReportBuilder.Guard(
                 "building the record index",
                 null,
                 () => RecordIndex.Build(loaded, warnings, cancellationToken));
 
+            _logger.LogInformation(
+                "Scan {ScanId}: record index built for {PluginCount} plugins - {ArmoCount} ARMO, {ArmaCount} ARMA",
+                scanId,
+                loaded.Count,
+                index.ArmorCount,
+                index.ArmorAddonCount);
+
             var fileResolver = new FileResolver(source.RootPath, _logger);
-            var correlated = ScanReport.Guard(
+            var correlated = ScanReportBuilder.Guard(
                 "correlating armors",
                 null,
                 () => new ArmorCorrelator(fileResolver).Correlate(index, warnings, cancellationToken));
 
-            var grouping = ScanReport.Guard(
+            var grouping = ScanReportBuilder.Guard(
                 "grouping armors into sets",
                 null,
                 () => new ArmorSetGrouper().Group(correlated, index, warnings, cancellationToken));
 
-            var sets = ScanReport.Guard(
+            var sets = ScanReportBuilder.Guard(
                 "assembling gender/weight variants",
                 null,
                 () => VariantAssembler.Assemble(grouping, index, warnings, cancellationToken));
 
             CountMissingFiles(fileResolver, sets);
 
-            var report = ScanReport.Build(
+            var report = ScanReportBuilder.Build(
                 totalArmo: index.ArmorCount,
                 totalArma: index.ArmorAddonCount,
                 groupedSetCount: sets.Count,
@@ -106,8 +152,16 @@ public sealed class FolderCatalogScanner : ICatalogScanner
                 warnings: warnings,
                 missingFiles: fileResolver.MissingFiles);
 
+            _logger.LogInformation(
+                "Scan {ScanId}: grouped {ArmoCount} armors into {SetCount} sets ({OutfitGrouped} outfit-grouped); skipped {SkippedCount}",
+                scanId,
+                index.ArmorCount,
+                sets.Count,
+                report.OutfitGroupedSetCount,
+                report.Stats.Skipped);
+
             LastReport = report;
-            return new Catalog(source, sets, report.Stats, report.Warnings);
+            return new Catalog(source, sets, report.Stats, report.Warnings, report);
         }
         finally
         {
@@ -115,6 +169,13 @@ public sealed class FolderCatalogScanner : ICatalogScanner
             {
                 mod.Dispose();
             }
+
+            watch.Stop();
+            _logger.LogInformation(
+                "Scan {ScanId} finished in {ElapsedMilliseconds} ms with {WarningCount} warnings",
+                scanId,
+                watch.ElapsedMilliseconds,
+                warnings.Count);
         }
     }
 

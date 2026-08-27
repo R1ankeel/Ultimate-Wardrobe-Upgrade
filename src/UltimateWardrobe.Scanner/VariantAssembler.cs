@@ -41,8 +41,8 @@ public static class VariantAssembler
 
         foreach (var member in members)
         {
-            var genders = ScanReport.Guard("detecting gender", member.EditorId, () => GenderWeightDetector.DetectGenders(member, index, warnings));
-            var weight = ScanReport.Guard("detecting weight", member.EditorId, () => GenderWeightDetector.DetectWeight(member, index));
+            var genders = ScanReportBuilder.Guard("detecting gender", member.EditorId, () => GenderWeightDetector.DetectGenders(member, index, warnings));
+            var weight = ScanReportBuilder.Guard("detecting weight", member.EditorId, () => GenderWeightDetector.DetectWeight(member, index));
             var slot = BipedSlotMapper.ToSlotString(member.BipedFlags)
                        ?? $"BODT {(uint)member.BipedFlags}";
             var slotIndex = BipedSlotMapper.SlotIndex(member.BipedFlags);

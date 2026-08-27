@@ -37,6 +37,38 @@ public sealed class ArmorSetGrouperTests
     }
 
     [Fact]
+    public void MultiFamilyWardrobeOutfit_DoesNotBridgeFamilies()
+    {
+        using var dir = new TestTempDir();
+        SyntheticWardrobeUniverse.Write(dir.Root);
+
+        var warnings = new List<ScanWarning>();
+        ModLoader loader = new();
+        var loaded = loader.TryLoad(dir.File(SyntheticWardrobeUniverse.FileName), warnings);
+        try
+        {
+            Assert.NotNull(loaded);
+            var index = RecordIndex.Build(new[] { loaded! }, warnings);
+            var correlated = new ArmorCorrelator().Correlate(index, warnings);
+            var result = new ArmorSetGrouper().Group(correlated, index, warnings);
+
+            Assert.DoesNotContain(result.Sets, s => s.Id == "mercenarymixer");
+
+            var steel = Assert.Single(result.Sets, s => s.Members.Any(m => m.EditorId == "ArmorSteelCuirassA"));
+            Assert.Equal(
+                new[] { "ArmorSteelBootsA", "ArmorSteelCuirassA" },
+                steel.Members.Select(m => m.EditorId).OrderBy(e => e, StringComparer.Ordinal));
+
+            var iron = Assert.Single(result.Sets, s => s.Members.Any(m => m.EditorId == "ArmorIronCuirass"));
+            Assert.Equal(new[] { "ArmorIronCuirass" }, iron.Members.Select(m => m.EditorId));
+        }
+        finally
+        {
+            loaded?.Dispose();
+        }
+    }
+
+    [Fact]
     public void SplitMembershipSet_LandsInOneArmorSet_NeverFragments()
     {
         using var dir = new TestTempDir();

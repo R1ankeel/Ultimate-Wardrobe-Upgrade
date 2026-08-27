@@ -109,6 +109,54 @@ public class RealDataScannerTests
         }
     }
 
+    [Fact]
+    public async Task Vanilla_RealGame_FullKitsAreSingleSets_NoMegaSets()
+    {
+        if (!Directory.Exists(GameRoot))
+        {
+            _output.WriteLine($"Skipped: Skyrim game root '{GameRoot}' is absent.");
+            return;
+        }
+
+        var catalog = await new FolderCatalogScanner().ScanAsync(new VanillaCatalogSource(GameRoot));
+
+        // Sprint 1.7.3 set-integrity check: real Iron/Steel/Leather each form ONE ArmorSet, the
+        // Outfit first (OTFT) signal plus wardrobe-outfit filtering. The vanilla NPC wardrobe
+        // cwmission04outfitimperial used to swallow all three kits into one 585-piece set.
+        var ironSet = Assert.Single(catalog.Sets, s => s.Variants.SelectMany(v => v.Pieces).Any(p => p.EditorId == "ArmorIronCuirass"));
+        var ironMembers = ironSet.Variants.SelectMany(v => v.Pieces).Select(p => p.EditorId).Distinct().ToList();
+        foreach (var piece in new[] { "ArmorIronHelmet", "ArmorIronCuirass", "ArmorIronGauntlets", "ArmorIronBoots" })
+        {
+            Assert.Contains(piece, ironMembers);
+        }
+
+        var steelSet = Assert.Single(catalog.Sets, s => s.Variants.SelectMany(v => v.Pieces).Any(p => p.EditorId == "ArmorSteelCuirassA"));
+        var steelMembers = steelSet.Variants.SelectMany(v => v.Pieces).Select(p => p.EditorId).Distinct().ToList();
+        foreach (var piece in new[] { "ArmorSteelHelmetA", "ArmorSteelCuirassA", "ArmorSteelGauntletsA", "ArmorSteelBootsA", "ArmorSteelShield" })
+        {
+            Assert.Contains(piece, steelMembers);
+        }
+        Assert.Contains(steelSet.Variants, v => v.Gender == Gender.Male);
+        Assert.Contains(steelSet.Variants, v => v.Gender == Gender.Female);
+
+        var leatherSet = Assert.Single(catalog.Sets, s => s.Variants.SelectMany(v => v.Pieces).Any(p => p.EditorId == "ArmorLeatherCuirass"));
+        var leatherMembers = leatherSet.Variants.SelectMany(v => v.Pieces).Select(p => p.EditorId).Distinct().ToList();
+        foreach (var piece in new[] { "ArmorLeatherHelmet", "ArmorLeatherCuirass", "ArmorLeatherGauntlets", "ArmorLeatherBoots" })
+        {
+            Assert.Contains(piece, leatherMembers);
+        }
+
+        foreach (var set in catalog.Sets)
+        {
+            var memberEditorIds = set.Variants.SelectMany(v => v.Pieces).Select(p => p.EditorId).ToList();
+            Assert.True(memberEditorIds.Count <= 150,
+                $"Set '{set.Id}' has {memberEditorIds.Count} pieces - accidental mega-set.");
+            Assert.False(
+                memberEditorIds.Contains("ArmorIronCuirass") && memberEditorIds.Contains("ArmorSteelCuirassA"),
+                $"Set '{set.Id}' mixes Iron and Steel armor - an NPC wardrobe Outfit leaked through.");
+        }
+    }
+
     private static string? ChooseMainPlugin(string root)
     {
         var candidates = Directory.EnumerateFiles(root, "*.esp", SearchOption.AllDirectories)

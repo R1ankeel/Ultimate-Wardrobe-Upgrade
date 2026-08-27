@@ -4,24 +4,12 @@ using UltimateWardrobe.Core.Enums;
 namespace UltimateWardrobe.Scanner;
 
 /// <summary>
-/// Post-scan report (Sprint 1.5.3): deterministic warning accumulation (deduplicated and
-/// ordinally sorted) plus <see cref="ScanStats"/> filling, and the route for unexpected
-/// per-record exceptions into <see cref="CatalogScanException"/> with an <see cref="CatalogScanException.EditorId"/>.
-/// Set-counting for the Outfit signal is fed from the grouping stage (1.7.3 tuning).
+/// Builds <see cref="ScanReport"/> from raw scan outputs (Sprint 1.5.3, moved to Core in 1.7.2)
+/// and routes unexpected per-record exceptions into <see cref="CatalogScanException"/> carrying
+/// an <see cref="CatalogScanException.EditorId"/>.
 /// </summary>
-public sealed class ScanReport
+public static class ScanReportBuilder
 {
-    public required ScanStats Stats { get; init; }
-
-    public required IReadOnlyList<ScanWarning> Warnings { get; init; }
-
-    /// <summary>
-    /// Number of <see cref="ArmorSet"/>s whose key came from an Outfit (OTFT) membership
-    /// signal. Used by the 1.7.3 tuning pass to gauge how much of the catalog rides on the
-    /// Outfit-first path.
-    /// </summary>
-    public int OutfitGroupedSetCount { get; init; }
-
     /// <summary>
     /// Builds the report from raw scan outputs: deduplicates and sorts warnings for
     /// determinism, fills <see cref="ScanStats"/> (total skipped = the sum of the

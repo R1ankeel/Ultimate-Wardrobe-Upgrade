@@ -113,6 +113,7 @@ public static class KeyNormalizer
 
         if (stripPieceSuffix)
         {
+            text = StripPieceVariant(text);
             text = StripPieceSuffix(text);
         }
 
@@ -212,6 +213,31 @@ public static class KeyNormalizer
             if (text.EndsWith(marker, StringComparison.Ordinal) && text.Length > marker.Length)
             {
                 return text[..^marker.Length];
+            }
+        }
+
+        return text;
+    }
+
+    /// <summary>
+    /// Drops a trailing single uppercase variant letter when a piece suffix follows it (e.g.
+    /// "SteelBootsA" -> "SteelBoots"), so vanilla A/B piece alternates (Steel cuirass A/B,
+    /// helmet A/B) share one set family instead of fragmenting into "steelbootsa" vs
+    /// "steelcuirassa".
+    /// </summary>
+    private static string StripPieceVariant(string text)
+    {
+        if (text.Length <= 2 || !char.IsUpper(text[^1]))
+        {
+            return text;
+        }
+
+        var tail = text[..^1];
+        foreach (var suffix in PieceSuffixes.OrderByDescending(s => s.Length))
+        {
+            if (tail.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+            {
+                return tail;
             }
         }
 

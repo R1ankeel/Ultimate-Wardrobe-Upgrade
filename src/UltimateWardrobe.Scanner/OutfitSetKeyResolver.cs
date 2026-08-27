@@ -22,15 +22,18 @@ public sealed record OutfitKeyResult
 }
 
 /// <summary>
-/// Resolves the priority grouping signal from Outfit (OTFT) membership (Sprint 1.3.4).
-/// An armor that belongs to at least one Outfit gets its set key from the normalized Outfit
-/// EditorID. Multi-outfit armor picks the deterministic alphabetical-first key.
+/// Resolves the grouping signal from Outfit (OTFT) membership (Sprint 1.3.4). An armor that
+/// belongs to at least one Outfit gets a candidate key from each normalized Outfit EditorID.
+/// <see cref="Resolve"/> returns the deterministic alphabetical-first key (single-key consumer);
+/// <see cref="ResolveAll"/> returns every candidate for the 1.7.3 agreement rule, where the
+/// ArmorSetGrouper picks the key with the most member agreement (verifiable split-membership /
+/// cross-sharing merge instead of a purely local tie-break).
 /// </summary>
 public static class OutfitSetKeyResolver
 {
     /// <summary>
-    /// Resolves the Outfit key for the given armor record. Returns
-    /// <see cref="OutfitKeyResult.Key"/> = null when the armor belongs to no Outfit.
+    /// Resolves the single Outfit key for the given armor record (alphabetical-first candidate).
+    /// Returns <see cref="OutfitKeyResult.Key"/> = null when the armor belongs to no Outfit.
     /// </summary>
     public static OutfitKeyResult Resolve(IArmorGetter armor, RecordIndex index)
     {
@@ -38,6 +41,23 @@ public static class OutfitSetKeyResolver
         if (outfits.Count == 0)
         {
             return new OutfitKeyResult { Key = null, OutfitCount = 0 };
+        }
+
+        var keys = ResolveAll(armor, index);
+        return new OutfitKeyResult { Key = keys.FirstOrDefault(), OutfitCount = outfits.Count };
+    }
+
+    /// <summary>
+    /// Resolves every normalized Outfit candidate key for the armor record, distinct by Id and
+    /// ordinally sorted for determinism. Empty when the armor belongs to no Outfit or none of
+    /// its Outfit links resolve or produce a meaningful key.
+    /// </summary>
+    public static IReadOnlyList<NormalizedSetKey> ResolveAll(IArmorGetter armor, RecordIndex index)
+    {
+        var outfits = index.OutfitsForArmor(armor.FormKey);
+        if (outfits.Count == 0)
+        {
+            return Array.Empty<NormalizedSetKey>();
         }
 
         var keys = new List<NormalizedSetKey>();
@@ -55,12 +75,9 @@ public static class OutfitSetKeyResolver
             }
         }
 
-        if (keys.Count == 0)
-        {
-            return new OutfitKeyResult { Key = null, OutfitCount = outfits.Count };
-        }
-
-        var selected = keys.OrderBy(k => k.Id, StringComparer.Ordinal).First();
-        return new OutfitKeyResult { Key = selected, OutfitCount = outfits.Count };
+        return keys
+            .DistinctBy(k => k.Id, StringComparer.Ordinal)
+            .OrderBy(k => k.Id, StringComparer.Ordinal)
+            .ToList();
     }
 }

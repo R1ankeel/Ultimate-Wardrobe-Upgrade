@@ -15,6 +15,9 @@ public sealed class KeyNormalizerTests
     [InlineData("zzzMysteryBoots", "mystery", "Mystery")]
     [InlineData("AANordCuirassReplacer", "cuirassreplacer", "Cuirass Replacer")]
     [InlineData("Iron_Armor", "iron", "Iron")]
+    [InlineData("ArmorSteelBootsA", "steel", "Steel")]
+    [InlineData("ArmorSteelHelmetB", "steel", "Steel")]
+    [InlineData("ArmorLeatherGauntletsC", "leather", "Leather")]
     public void NormalizeEditorId_CorpusOfRealLookingIds(string editorId, string expectedId, string expectedName)
     {
         var key = KeyNormalizer.NormalizeEditorId(editorId);

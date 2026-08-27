@@ -63,7 +63,7 @@ public sealed class ArmorCorrelator
         foreach (var armor in index.EnumerateArmor())
         {
             cancellationToken.ThrowIfCancellationRequested();
-            result.Add(ScanReport.Guard("correlating armor", armor.EditorID, () => CorrelateOne(armor, index, warnings)));
+            result.Add(ScanReportBuilder.Guard("correlating armor", armor.EditorID, () => CorrelateOne(armor, index, warnings)));
         }
 
         return result;
