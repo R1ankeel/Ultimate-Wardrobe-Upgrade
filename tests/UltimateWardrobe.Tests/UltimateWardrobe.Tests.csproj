@@ -3,6 +3,8 @@
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
     <IsPackable>false</IsPackable>
+    <WarningsNotAsErrors>NU1900;NU1902;NU1903;NU1904</WarningsNotAsErrors>
+    <NoWarn>NU1900;NU1902;NU1903;NU1904</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\UltimateWardrobe.Core\UltimateWardrobe.Core.csproj" />
     <ProjectReference Include="..\..\src\UltimateWardrobe.Archives\UltimateWardrobe.Archives.csproj" />
+    <ProjectReference Include="..\..\src\UltimateWardrobe.Scanner\UltimateWardrobe.Scanner.csproj" />
   </ItemGroup>
 
   <ItemGroup>
