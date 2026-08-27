@@ -7,6 +7,7 @@ Standalone application for building full visual replacers for Skyrim SE armor an
 - Phase 0 - Foundation: in progress
   - Sprint 0.0 scaffolding - done (solution builds on .NET 10, native DLLs wired)
   - Sprint 0.1 domain model - done (`UltimateWardrobe.Core` with POCOs/enums/abstractions, 47 tests green)
+  - Sprint 0.2 archive layer - done (`UltimateWardrobe.Archives` native-first over 7z.dll (7z/zip) + UnRAR64.dll (rar) with SharpCompress fallback, 96 tests green)
 
 ## Stack
 
@@ -14,14 +15,14 @@ Standalone application for building full visual replacers for Skyrim SE armor an
 - WPF (MVVM, CommunityToolkit.Mvvm) - from Phase 6
 - Mutagen.Bethesda - from Phase 1
 - SQLite + Microsoft.Data.Sqlite - from Phase 4
-- Archives via `7z.dll` + `UnRAR64.dll` (P/Invoke) - Phase 0.1
+- Archives extracted natively via `7z.dll` (7z/zip) + `UnRAR64.dll` (rar), SharpCompress fallback - Phase 0.2
 
 ## Solution
 
 ```
-UltimateWardrobe.sln
+UltimateWardrobe.slnx
 ├── src/UltimateWardrobe.Core        # Domain model, no I/O
-├── src/UltimateWardrobe.Archives    # Archive extraction
+├── src/UltimateWardrobe.Archives    # Archive extraction (native first)
 └── tests/UltimateWardrobe.Tests     # xUnit + FluentAssertions
 ```
 
@@ -41,7 +42,7 @@ dotnet test
 - `Plans/phase0.md` - Phase 0 implementation plan (sprints)
 - `Docs/architecture.md` - architecture overview
 - `Docs/domain-model.md` - domain model (Sprint 0.1 - done)
-- `Docs/archive-layer.md` - archive layer (Sprint 0.2 - pending)
+- `Docs/archive-layer.md` - archive layer (Sprint 0.2 - done)
 
 ## Test Assets
 

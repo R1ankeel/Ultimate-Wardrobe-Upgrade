@@ -22,4 +22,8 @@
     <ProjectReference Include="..\..\src\UltimateWardrobe.Archives\UltimateWardrobe.Archives.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\TestData\Archives\**\*.*" Link="TestData\Archives\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
