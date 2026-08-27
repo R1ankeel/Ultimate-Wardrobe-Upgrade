@@ -7,12 +7,19 @@ public sealed class DonorProvidedSet
     public string Id { get; init; }
     public string DisplayName { get; init; }
 
-    public DonorProvidedSet(string id, string displayName)
+    /// <summary>
+    /// The catalog-shaped variants this donor provides (Sprint 2.0.2, Scope amendment #2).
+    /// Empty until classification fills them - the 2-arg ctor keeps Phase 0 fixtures working.
+    /// </summary>
+    public IReadOnlyList<Variant> Variants { get; init; }
+
+    public DonorProvidedSet(string id, string displayName, IReadOnlyList<Variant>? variants = null)
     {
         if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("Id must not be empty.", nameof(id));
         if (string.IsNullOrWhiteSpace(displayName)) throw new ArgumentException("DisplayName must not be empty.", nameof(displayName));
         Id = id;
         DisplayName = displayName;
+        Variants = variants ?? Array.Empty<Variant>();
     }
 }
 
@@ -25,7 +32,7 @@ public sealed class DonorAsset
     public string ArchiveHash { get; init; }
     public DonorAssetKind Kind { get; init; }
     public IReadOnlyList<DonorProvidedSet> ProvidedSets { get; init; }
-    public IReadOnlyList<string> FileManifest { get; init; }
+    public IReadOnlyList<DonorFileEntry> FileManifest { get; init; }
     public IReadOnlyList<string> DetectedBodySlideFiles { get; init; }
     public IReadOnlyList<string> DetectedPhysicsFiles { get; init; }
 
@@ -37,7 +44,7 @@ public sealed class DonorAsset
         string archiveHash,
         DonorAssetKind kind = DonorAssetKind.FullReplacer,
         IReadOnlyList<DonorProvidedSet>? providedSets = null,
-        IReadOnlyList<string>? fileManifest = null,
+        IReadOnlyList<DonorFileEntry>? fileManifest = null,
         IReadOnlyList<string>? detectedBodySlideFiles = null,
         IReadOnlyList<string>? detectedPhysicsFiles = null)
     {
@@ -53,7 +60,7 @@ public sealed class DonorAsset
         ArchiveHash = archiveHash;
         Kind = kind;
         ProvidedSets = providedSets ?? Array.Empty<DonorProvidedSet>();
-        FileManifest = fileManifest ?? Array.Empty<string>();
+        FileManifest = fileManifest ?? Array.Empty<DonorFileEntry>();
         DetectedBodySlideFiles = detectedBodySlideFiles ?? Array.Empty<string>();
         DetectedPhysicsFiles = detectedPhysicsFiles ?? Array.Empty<string>();
     }

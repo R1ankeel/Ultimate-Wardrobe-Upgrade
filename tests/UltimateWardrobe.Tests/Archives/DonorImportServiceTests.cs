@@ -32,7 +32,10 @@ public class DonorImportServiceTests : IDisposable
         donor.ExtractedPath.Should().Be(Path.Combine(projectRoot, "Source", donor.ImportId.ToString()));
         Directory.Exists(donor.ExtractedPath).Should().BeTrue();
         File.Exists(Path.Combine(donor.ExtractedPath, "meshes", "armor", "iron", "cuirass.nif")).Should().BeTrue();
-        donor.FileManifest.Should().Contain(m => m.Contains("meshes/armor/iron/cuirass.nif"));
+        donor.FileManifest.Should().Contain(e => e.RelativePath == "meshes/armor/iron/cuirass.nif");
+        donor.FileManifest.Should().OnlyContain(e => e.Length >= 0);
+        var entry = donor.FileManifest.Single(e => e.RelativePath == "textures/armor/iron/d.dds");
+        entry.Length.Should().Be(File.ReadAllBytes(Path.Combine(donor.ExtractedPath, "textures", "armor", "iron", "d.dds")).Length);
 
         var metaPath = Path.Combine(donor.ExtractedPath, "_meta.json");
         File.Exists(metaPath).Should().BeTrue();

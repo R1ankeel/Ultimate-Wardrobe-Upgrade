@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\src\UltimateWardrobe.Core\UltimateWardrobe.Core.csproj" />
     <ProjectReference Include="..\..\src\UltimateWardrobe.Archives\UltimateWardrobe.Archives.csproj" />
     <ProjectReference Include="..\..\src\UltimateWardrobe.Scanner\UltimateWardrobe.Scanner.csproj" />
+    <ProjectReference Include="..\..\src\UltimateWardrobe.DonorLibrary\UltimateWardrobe.DonorLibrary.csproj" />
   </ItemGroup>
 
   <ItemGroup>

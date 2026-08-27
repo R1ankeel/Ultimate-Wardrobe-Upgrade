@@ -17,6 +17,32 @@ public class DonorAssetTests
     }
 
     [Fact]
+    public void DonorProvidedSet_Default_To_Empty_Variants()
+    {
+        var set = new UltimateWardrobe.Core.Domain.DonorProvidedSet("IronArmor", "Iron Armor");
+        set.Variants.Should().BeEmpty();
+
+        var piece = new UltimateWardrobe.Core.Domain.Piece("IronCuirass", 0x12E46, "Body", "IronCuirassAA", "meshes/armor/iron/cuirass.nif");
+        var variant = new UltimateWardrobe.Core.Domain.Variant(Gender.Male, WeightClass.Heavy, new[] { piece });
+        var withVariants = new UltimateWardrobe.Core.Domain.DonorProvidedSet("IronArmor", "Iron Armor", new[] { variant });
+        withVariants.Variants.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public void DonorFileEntry_Requires_Path_And_NonNegative_Length()
+    {
+        var entry = new UltimateWardrobe.Core.Domain.DonorFileEntry("meshes/a.nif", 123);
+        entry.RelativePath.Should().Be("meshes/a.nif");
+        entry.Length.Should().Be(123);
+
+        var act = () => new UltimateWardrobe.Core.Domain.DonorFileEntry("", 1);
+        act.Should().Throw<ArgumentException>();
+
+        var neg = () => new UltimateWardrobe.Core.Domain.DonorFileEntry("a.nif", -1);
+        neg.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
     public void DonorAsset_Throws_On_Empty_Required()
     {
         var act = () => new UltimateWardrobe.Core.Domain.DonorAsset(Guid.Empty, "f.7z", "C:/p", DateTime.UtcNow, "hash");

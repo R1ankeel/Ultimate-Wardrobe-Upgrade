@@ -34,7 +34,7 @@ public sealed class DonorImportService
         }
 
         ArchiveFormat format = ArchiveFormat.Unknown;
-        IReadOnlyList<string> manifest = Array.Empty<string>();
+        IReadOnlyList<DonorFileEntry> manifest = Array.Empty<DonorFileEntry>();
         int nestedHandled = 0;
 
         try
@@ -43,10 +43,10 @@ public sealed class DonorImportService
             format = result.Format;
             nestedHandled = result.NestedHandled;
 
-            // Build manifest relative to dest
+            // Build manifest relative to dest with per-file sizes (Sprint 2.0.2, Scope amendment #1)
             var files = Directory.EnumerateFiles(dest, "*.*", SearchOption.AllDirectories)
-                .Select(f => Path.GetRelativePath(dest, f).Replace('\\', '/'))
-                .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
+                .Select(f => new DonorFileEntry(Path.GetRelativePath(dest, f).Replace('\\', '/'), new FileInfo(f).Length))
+                .OrderBy(e => e.RelativePath, StringComparer.OrdinalIgnoreCase)
                 .ToList()
                 .AsReadOnly();
             manifest = files;
