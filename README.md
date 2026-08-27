@@ -92,6 +92,7 @@ Standalone application for building full visual replacers for Skyrim SE armor an
   - Sprint 1.2 ARMO -> ARMA -> files correlation - done (`FileResolver` path matrix, `ArmorCorrelator` pre-Piece with mesh/texture paths from TXST, unresolved-link/missing-master warnings never abort; 134 tests green)
   - Sprint 1.3 ArmorSet grouping heuristic - done (`PlayableRaceFilter` creature-skin pre-filter, `OutfitSetKeyResolver` Outfit-first signal with EDID/mesh fallback, `KeyNormalizer` + `PieceTypeDetector`, `ArmorSetGrouper` with per-reason skip breakdown; split-membership set lands in ONE `ArmorSet`; 226 tests green)
   - Sprint 1.4 Gender / Weight split - done (`BipedSlotMapper` frozen slot table, `GenderWeightDetector` weight from KEYW with ArmorType bonus + gender from ID/mesh/ARMA signals with Unisex fallback warning, `VariantAssembler` one variant per (Gender, Weight) with same-ARMO two-Piece split; Iron acceptance produces Male Heavy + Female Heavy; 270 tests green)
+  - Sprint 1.5 Catalog model + cache - done (`FolderCatalogScanner.ScanAsync` pipeline with cancellation, deterministic `Catalog`; `ScanReport` warning dedup/sort + `ScanStats` + per-record exception routing; `CatalogCacheStore` canonical JSON + `CatalogSource` converter + `IsFresh` probe invalidation; round-trip value identity + stale-probe invalidates cache; 297 tests green)
 
 ## Stack
 
@@ -128,7 +129,7 @@ dotnet test
 - `Docs/architecture.md` - architecture overview
 - `Docs/domain-model.md` - domain model (Sprint 0.1 - done)
 - `Docs/archive-layer.md` - archive layer (Sprint 0.2 - done)
-- `Docs/scanner.md` - folder catalog scanner, grouping + gender/weight variants (Sprint 1.4 - done)
+- `Docs/scanner.md` - folder catalog scanner, grouping + gender/weight variants, catalog + cache (Sprint 1.5 - done)
 
 ## Test Assets
 

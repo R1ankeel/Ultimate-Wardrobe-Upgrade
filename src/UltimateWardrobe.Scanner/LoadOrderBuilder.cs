@@ -12,7 +12,10 @@ public sealed class LoadOrderBuilder
         _loader = loader;
     }
 
-    public IReadOnlyList<DiscoveredPlugin> Build(DiscoveryResult discovery, List<ScanWarning> warnings)
+    public IReadOnlyList<DiscoveredPlugin> Build(
+        DiscoveryResult discovery,
+        List<ScanWarning> warnings,
+        CancellationToken cancellationToken = default)
     {
         var pool = discovery.Plugins.ToDictionary(p => p.ModKey);
         var order = new List<DiscoveredPlugin>();
@@ -21,7 +24,8 @@ public sealed class LoadOrderBuilder
 
         foreach (var root in discovery.Plugins.OrderBy(p => p.ModKey.Name, StringComparer.Ordinal))
         {
-            Visit(root, pool, visited, order, warnedMissing, warnings);
+            cancellationToken.ThrowIfCancellationRequested();
+            Visit(root, pool, visited, order, warnedMissing, warnings, cancellationToken);
         }
 
         return order;
@@ -33,12 +37,15 @@ public sealed class LoadOrderBuilder
         HashSet<ModKey> visited,
         List<DiscoveredPlugin> order,
         HashSet<ModKey> warnedMissing,
-        List<ScanWarning> warnings)
+        List<ScanWarning> warnings,
+        CancellationToken cancellationToken)
     {
         if (!visited.Add(plugin.ModKey))
         {
             return;
         }
+
+        cancellationToken.ThrowIfCancellationRequested();
 
         IReadOnlyList<ModKey> masters;
         try
@@ -54,11 +61,13 @@ public sealed class LoadOrderBuilder
 
         foreach (var master in masters)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (pool.TryGetValue(master, out var masterPlugin))
             {
                 if (!visited.Contains(masterPlugin.ModKey))
                 {
-                    Visit(masterPlugin, pool, visited, order, warnedMissing, warnings);
+                    Visit(masterPlugin, pool, visited, order, warnedMissing, warnings, cancellationToken);
                 }
 
                 continue;

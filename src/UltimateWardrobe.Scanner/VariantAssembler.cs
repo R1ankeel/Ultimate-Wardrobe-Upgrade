@@ -16,12 +16,14 @@ public static class VariantAssembler
     public static IReadOnlyList<ArmorSet> Assemble(
         GroupingResult grouping,
         RecordIndex index,
-        List<ScanWarning> warnings)
+        List<ScanWarning> warnings,
+        CancellationToken cancellationToken = default)
     {
         var sets = new List<ArmorSet>();
 
         foreach (var grouped in grouping.Sets.OrderBy(s => s.Id, StringComparer.Ordinal))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var variants = AssembleVariants(grouped.Members, index, warnings);
             sets.Add(new ArmorSet(grouped.Id, grouped.DisplayName, variants));
         }
@@ -39,8 +41,8 @@ public static class VariantAssembler
 
         foreach (var member in members)
         {
-            var genders = GenderWeightDetector.DetectGenders(member, index, warnings);
-            var weight = GenderWeightDetector.DetectWeight(member, index);
+            var genders = ScanReport.Guard("detecting gender", member.EditorId, () => GenderWeightDetector.DetectGenders(member, index, warnings));
+            var weight = ScanReport.Guard("detecting weight", member.EditorId, () => GenderWeightDetector.DetectWeight(member, index));
             var slot = BipedSlotMapper.ToSlotString(member.BipedFlags)
                        ?? $"BODT {(uint)member.BipedFlags}";
             var slotIndex = BipedSlotMapper.SlotIndex(member.BipedFlags);

@@ -130,7 +130,10 @@ public sealed class RecordIndex
         return false;
     }
 
-    public static RecordIndex Build(IReadOnlyList<LoadedMod> orderedMods, List<ScanWarning> warnings)
+    public static RecordIndex Build(
+        IReadOnlyList<LoadedMod> orderedMods,
+        List<ScanWarning> warnings,
+        CancellationToken cancellationToken = default)
     {
         var armor = new Dictionary<FormKey, IArmorGetter>();
         var arma = new Dictionary<FormKey, IArmorAddonGetter>();
@@ -141,6 +144,8 @@ public sealed class RecordIndex
 
         foreach (var mod in orderedMods)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             try
             {
                 foreach (var entry in mod.Overlay.Armors.RecordCache)
@@ -170,6 +175,8 @@ public sealed class RecordIndex
 
         foreach (var mod in orderedMods)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             try
             {
                 foreach (var entry in mod.Overlay.Keywords.RecordCache)
@@ -208,6 +215,8 @@ public sealed class RecordIndex
 
         foreach (var mod in orderedMods)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             try
             {
                 foreach (var entry in mod.Overlay.Races.RecordCache)

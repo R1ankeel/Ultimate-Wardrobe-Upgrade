@@ -53,13 +53,17 @@ public sealed class ArmorCorrelator
         _resolver = resolver;
     }
 
-    public IReadOnlyList<CorrelatedArmor> Correlate(RecordIndex index, List<ScanWarning> warnings)
+    public IReadOnlyList<CorrelatedArmor> Correlate(
+        RecordIndex index,
+        List<ScanWarning> warnings,
+        CancellationToken cancellationToken = default)
     {
         var result = new List<CorrelatedArmor>();
 
         foreach (var armor in index.EnumerateArmor())
         {
-            result.Add(CorrelateOne(armor, index, warnings));
+            cancellationToken.ThrowIfCancellationRequested();
+            result.Add(ScanReport.Guard("correlating armor", armor.EditorID, () => CorrelateOne(armor, index, warnings)));
         }
 
         return result;

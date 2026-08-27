@@ -1,6 +1,6 @@
 # Folder Catalog Scanner
 
-> Phase 1, Sprints 1.0-1.4 done - `src/UltimateWardrobe.Scanner` - Mutagen folder-only reading, ARMO -> ARMA -> files correlation, ArmorSet grouping, gender/weight variant assembly.
+> Phase 1, Sprints 1.0-1.5 done - `src/UltimateWardrobe.Scanner` - Mutagen folder-only reading, ARMO -> ARMA -> files correlation, ArmorSet grouping, gender/weight variant assembly, end-to-end `Catalog` scanning plus cache/report.
 
 ## Overview
 
@@ -26,6 +26,21 @@ All reading goes through Mutagen binary overlays (`SkyrimMod.CreateFromBinaryOve
 | `BipedSlotMapper.cs:1` | Frozen BOD2 slot table (from planning 1.0.5), `SlotIndex` + `ToSlotString` |
 | `GenderWeightDetector.cs:1` | WeightClass from KEYW (ArmorType bonus), gender from ID/mesh/ARMA signals |
 | `VariantAssembler.cs:1` | `(Gender, Weight)` variants per `ArmorSet`, piece split + ordering |
+| `FolderCatalogScanner.cs:1` | Sprint 1.5 orchestrator: discovery -> order -> index -> correlate -> group -> assemble -> `Catalog` |
+| `ScanReport.cs:1` | Warning dedup/sort, `ScanStats` fill, per-record exception routing to `CatalogScanException` |
+| `CatalogCacheStore.cs:1` | Canonical JSON persistence, `CatalogSource` converter, `IsFresh` probe comparison |
+
+## Catalog scan (Sprint 1.5)
+
+`FolderCatalogScanner.ScanAsync(CatalogSource, CancellationToken)` runs 1.1-1.4 as one pipeline: discovery -> masters-first order -> overlay load -> merged `RecordIndex` -> `ArmorCorrelator` (with `FileResolver` wiring) -> `ArmorSetGrouper` -> `VariantAssembler`, then missing-file accounting and deterministic `Catalog` assembly. Cancellation is checked between plugins and between record groups; the method is `Task`-friendly - it never throws synchronously, surfacing all outcomes through the returned `Task` (success, `Task.FromCanceled<Catalog>` on cancellation, `Task.FromException<Catalog>` otherwise). Loaded overlays are disposed in a `finally`.
+
+### ScanReport
+
+`ScanReport.Build` dedups warnings by `(Message, EditorId)`, sorts them by Message then EditorId (ordinal), and fills `ScanStats`: `Skipped` is the sum of the `SkippedByReason` breakdown stored in a `SortedDictionary<SkipReason, int>` (thus sorted by enum value). `OutfitGroupedSetCount` counts sets whose members were placed via an Outfit (`ArmorSetGrouper.GroupingResult.OutfitGroupedSetCount`, per-group `GroupedSet.GroupedViaOutfit`). Each pipeline stage wraps its work in `ScanReport.Guard<T>(stage, editorId, action)`, which passes `CatalogScanException` and `OperationCanceledException` through unchanged and wraps anything else in a `CatalogScanException` whose `EditorId` carries the offending record. The scanner exposes the latest report as `LastReport`.
+
+### CatalogCacheStore
+
+`CatalogCacheStore` persists a `Catalog` to canonical System.Text.Json (camelCase, string enums, built-in type ctor binding - Core types stay attribute-free). `CatalogSource` uses a custom converter with a `kind` discriminator: `"vanilla"` (`rootPath` + `pluginNames`) or `"story"` (`rootPath` + `mainPlugin` + `masters`). The file wrapper is `CacheFile { FormatVersion = 1, Probe, Catalog }`. `BuildProbe` captures the source root (full-path normalized) plus one `PluginProbe` (Name, Length, LastWriteTimeUtc) per plugin exactly as discovery would enumerate it; `IsFresh(path, source)` retries a fresh probe and returns true only when the file parses and both probes match. `Save` writes atomically under `FileShare.Read` so `TryLoad`/`IsFresh` can run on the same file.
 
 ## RecordIndex (Sprint 1.1 + 1.3.0)
 
@@ -92,8 +107,9 @@ Frozen `Piece.Slot` format (planning 1.0.5) is produced by `BipedSlotMapper.ToSl
 - `SyntheticGroupingUniverse.cs` - runtime mini-plugin via the Mutagen writer: an Outfit-driven set (Iron), a split-membership set (Nordic Carved), a fallback set (Leather), a creature-skin record (Boar), a vampire-race record, a multi-outfit armor, an unresolvable-race record, and one record per garbage skip reason.
 - Sprint 1.3 suite (92 tests) includes the explicit never-fragment assertion for the split-membership set and per-reason skip-count tracking.
 - Sprint 1.4 suite (44 new tests) covers the slot table + ordering, the weight matrix (keyword priority, ArmorType bonus, Any), gender signals (explicit ID/mesh, model + slider signals, race hint, ambiguous mesh, Unisex fallback with warning), the Iron acceptance (Male Heavy + Female Heavy variants, `0A2C8841/0A2C8842/0A2C8843` on `32 Body`/`33 Hands`/`37 Feet`, same EditorId across genders), same-ARMO two-piece output, determinism, and the `BODT {uint}` raw-slot fallback.
+- Sprint 1.5 suite (27 new tests) covers end-to-end determinism (scan twice, canonical JSON equal) and expected stats on the synthetic universe (17 ARMO / 16 ARMA, 6 sets, 3 Outfit-grouped, 5 skipped by reason, 24 missing files), the two warning producers (MysteryGauntlets unresolvable race, DanglingOnly dangling armature), missing-root / missing-main-plugin error routing, pre-cancelled token, warning dedup/sort, `ScanStats` fill, `Guard` exception routing with `EditorId`, cache round-trip value identity (vanilla + story sources), canonical byte-equal saves, and each `IsFresh` stale condition (modified plugin, deleted plugin, missing cache file, corrupt cache).
 - Real-game tests are `[Trait("Category","Integration")]` and skip automatically when the game folder is absent.
 
 ## Status
 
-Scans are complete up to `VariantAssembler` (per-set `(Gender, Weight)` variants, unisex by design). Next: Sprint 1.5 (catalog model + cache), then goldens (Sprint 1.6) and the real vanilla tuning pass (Sprint 1.7).
+The pipeline is complete end-to-end (`ScanAsync(CatalogSource, ct)` -> deterministic `Catalog`, persisted via `CatalogCacheStore` with probe invalidation, diagnostics via `ScanReport`). Next: Sprint 1.6 (goldens + catalog API facade), then the real vanilla tuning pass (Sprint 1.7).

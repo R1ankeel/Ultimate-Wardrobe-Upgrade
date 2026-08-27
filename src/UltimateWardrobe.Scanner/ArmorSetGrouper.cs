@@ -15,6 +15,13 @@ public sealed record GroupedSet
     public required string DisplayName { get; init; }
 
     public required IReadOnlyList<CorrelatedArmor> Members { get; init; }
+
+    /// <summary>
+    /// True when at least one member resolved its key from an Outfit (OTFT) membership signal
+    /// (Sprint 1.3.4). Fed to <see cref="ScanReport.OutfitGroupedSetCount"/> for the 1.7.3
+    /// tuning pass.
+    /// </summary>
+    public bool GroupedViaOutfit { get; init; }
 }
 
 /// <summary>
@@ -25,6 +32,11 @@ public sealed record GroupingResult
     public required IReadOnlyList<GroupedSet> Sets { get; init; }
 
     public required IReadOnlyDictionary<SkipReason, int> SkippedByReason { get; init; }
+
+    /// <summary>
+    /// Number of sets whose key came from the Outfit signal (Sprint 1.5.3, tuning in 1.7.3).
+    /// </summary>
+    public int OutfitGroupedSetCount { get; init; }
 }
 
 /// <summary>
@@ -39,13 +51,17 @@ public sealed class ArmorSetGrouper
     public GroupingResult Group(
         IEnumerable<CorrelatedArmor> correlated,
         RecordIndex index,
-        List<ScanWarning> warnings)
+        List<ScanWarning> warnings,
+        CancellationToken cancellationToken = default)
     {
         var skipped = new Dictionary<SkipReason, int>();
         var byKey = new SortedDictionary<string, GroupedSet>(StringComparer.Ordinal);
+        var viaOutfit = new Dictionary<string, bool>();
 
         foreach (var armor in correlated)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (TrySkipCreature(armor, index, warnings))
             {
                 Track(skipped, SkipReason.CreatureRace);
@@ -59,11 +75,16 @@ public sealed class ArmorSetGrouper
                 continue;
             }
 
-            var key = ResolveKey(armor, index);
+            var (key, usedOutfit) = ResolveKey(armor, index);
             if (key is null)
             {
                 Track(skipped, SkipReason.Other);
                 continue;
+            }
+
+            if (usedOutfit)
+            {
+                viaOutfit[key.Id] = true;
             }
 
             if (!byKey.TryGetValue(key.Id, out var set))
@@ -77,10 +98,19 @@ public sealed class ArmorSetGrouper
 
         var sets = byKey.Values
             .OrderBy(s => s.Id, StringComparer.Ordinal)
-            .Select(s => s with { Members = OrderMembers(s.Members) })
+            .Select(s => s with
+            {
+                GroupedViaOutfit = viaOutfit.GetValueOrDefault(s.Id, false),
+                Members = OrderMembers(s.Members),
+            })
             .ToList();
 
-        return new GroupingResult { Sets = sets, SkippedByReason = skipped };
+        return new GroupingResult
+        {
+            Sets = sets,
+            SkippedByReason = skipped,
+            OutfitGroupedSetCount = sets.Count(s => s.GroupedViaOutfit),
+        };
     }
 
     private static bool TrySkipCreature(CorrelatedArmor armor, RecordIndex index, List<ScanWarning> warnings)
@@ -150,16 +180,16 @@ public sealed class ArmorSetGrouper
         return false;
     }
 
-    private static NormalizedSetKey? ResolveKey(CorrelatedArmor armor, RecordIndex index)
+    private static (NormalizedSetKey? Key, bool UsedOutfit) ResolveKey(CorrelatedArmor armor, RecordIndex index)
     {
         var outfit = OutfitSetKeyResolver.Resolve(armor.Armor, index);
         if (outfit.Key is not null)
         {
-            return outfit.Key;
+            return (outfit.Key, true);
         }
 
-        return KeyNormalizer.NormalizeEditorId(armor.EditorId)
-            ?? KeyNormalizer.NormalizeMeshFolder(armor.MeshPath);
+        return (KeyNormalizer.NormalizeEditorId(armor.EditorId)
+            ?? KeyNormalizer.NormalizeMeshFolder(armor.MeshPath), false);
     }
 
     private static IReadOnlyList<CorrelatedArmor> OrderMembers(IReadOnlyList<CorrelatedArmor> members)
