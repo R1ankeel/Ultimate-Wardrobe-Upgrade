@@ -1,6 +1,6 @@
 # Folder Catalog Scanner
 
-> Phase 1, Sprints 1.0-1.5 done - `src/UltimateWardrobe.Scanner` - Mutagen folder-only reading, ARMO -> ARMA -> files correlation, ArmorSet grouping, gender/weight variant assembly, end-to-end `Catalog` scanning plus cache/report.
+> Phase 1, Sprints 1.0-1.6 done - `src/UltimateWardrobe.Scanner` - Mutagen folder-only reading, ARMO -> ARMA -> files correlation, ArmorSet grouping, gender/weight variant assembly, end-to-end `Catalog` scanning plus cache/report, committed goldens + Integration-gated real-data tests.
 
 ## Overview
 
@@ -18,7 +18,7 @@ All reading goes through Mutagen binary overlays (`SkyrimMod.CreateFromBinaryOve
 | `RecordIndex.cs:1` | Merged `Dictionary<FormKey, T>` for ARMO/ARMA/KEYW/TXST + OTFT/RACE extension |
 | `ArmorCorrelator.cs:1` | ARMO -> first-resolvable ARMA -> mesh/texture paths (`CorrelatedArmor`) |
 | `FileResolver.cs:1` | Logical loose-file existence across Data / no-Data layouts, `MissingFiles` accounting |
-| `PlayableRaceFilter.cs:1` | Playable-race whitelist (10 base + 10 vampire RACE EditorIDs) |
+| `PlayableRaceFilter.cs:1` | Playable-race whitelist (10 base + 10 vampire RACE EditorIDs, verified against real Skyrim.esm) + `DefaultRace` universal fallback |
 | `KeyNormalizer.cs:1` | EditorID / Outfit EditorID / mesh-folder -> normalized set key + DisplayName |
 | `PieceTypeDetector.cs:1` | Piece-type word from EDID suffix + BOD2 slot cross-check |
 | `OutfitSetKeyResolver.cs:1` | OTFT membership -> priority set key (deterministic tie-break) |
@@ -54,7 +54,7 @@ All reading goes through Mutagen binary overlays (`SkyrimMod.CreateFromBinaryOve
 
 ### Creature-skin pre-filter
 
-Before any grouping the grouper resolves the primary (first resolvable) ARMA race link. A RACE whose EditorID is outside the playable whitelist (Argonian/Breton/DarkElf/HighElf/Imperial/Khajiit/Nord/Orc/Redguard/WoodElf plus every `*Vampire` variant) skips the ARMO with `SkipReason.CreatureRace`, counted in `Stats.Skipped` and broken out per reason in `Stats.SkippedByReason`. A null race link never skips. An unresolvable race link emits a `ScanWarning` and the record is kept (EDID/mesh fallback).
+Before any grouping the grouper resolves the primary (first resolvable) ARMA race link. A RACE whose EditorID is outside the playable whitelist (real Skyrim IDs: `ArgonianRace`/`BretonRace`/`DarkElfRace`/`HighElfRace`/`ImperialRace`/`KhajiitRace`/`NordRace`/`OrcRace`/`RedguardRace`/`WoodElfRace` plus every `*Vampire` variant from `ArgonianRaceVampire` to `WoodElfRaceVampire`, verified on the real scan) skips the ARMO with `SkipReason.CreatureRace`, counted in `Stats.Skipped` and broken out per reason in `Stats.SkippedByReason`. Vanilla universal armor links its ARMA to a plain `DefaultRace` (FormID 0x000019) instead of a null link - `DefaultRace` is whitelisted too, so 3200+ records are never skimmed by mistake. A null race link never skips. An unresolvable race link emits a `ScanWarning` and the record is kept (EDID/mesh fallback).
 
 ### Outfit-first stage
 
@@ -108,8 +108,9 @@ Frozen `Piece.Slot` format (planning 1.0.5) is produced by `BipedSlotMapper.ToSl
 - Sprint 1.3 suite (92 tests) includes the explicit never-fragment assertion for the split-membership set and per-reason skip-count tracking.
 - Sprint 1.4 suite (44 new tests) covers the slot table + ordering, the weight matrix (keyword priority, ArmorType bonus, Any), gender signals (explicit ID/mesh, model + slider signals, race hint, ambiguous mesh, Unisex fallback with warning), the Iron acceptance (Male Heavy + Female Heavy variants, `0A2C8841/0A2C8842/0A2C8843` on `32 Body`/`33 Hands`/`37 Feet`, same EditorId across genders), same-ARMO two-piece output, determinism, and the `BODT {uint}` raw-slot fallback.
 - Sprint 1.5 suite (27 new tests) covers end-to-end determinism (scan twice, canonical JSON equal) and expected stats on the synthetic universe (17 ARMO / 16 ARMA, 6 sets, 3 Outfit-grouped, 5 skipped by reason, 24 missing files), the two warning producers (MysteryGauntlets unresolvable race, DanglingOnly dangling armature), missing-root / missing-main-plugin error routing, pre-cancelled token, warning dedup/sort, `ScanStats` fill, `Guard` exception routing with `EditorId`, cache round-trip value identity (vanilla + story sources), canonical byte-equal saves, and each `IsFresh` stale condition (modified plugin, deleted plugin, missing cache file, corrupt cache).
-- Real-game tests are `[Trait("Category","Integration")]` and skip automatically when the game folder is absent.
+- Sprint 1.6 suite (14 golden + negative-path tests, committed) - `SyntheticGroupingUniverse` writer + mini-universe happy path; one static golden plugin committed under `tests/TestData/Plugins/MiniUniverse.esp` guards the reader across refactors; golden catalog JSON under `tests/TestData/CatalogGolden/` regenerated only under `UW_WRITE_GOLDENS=1`. Golden comparison normalizes the scan root (`source.rootPath` -> `<root>` placeholder) because every scan uses a fresh temp dir. Mini-universe stats: TotalArmo 23, TotalArma 22, GroupedSets 12, MissingFiles 40, skipped 2 (NoArmature 1, CreatureRace 1). Negative paths: corrupt/empty plugin, missing main plugin, missing master.
+- Real-game tests are `[Trait("Category","Integration")]` and skip automatically when the game folder is absent: the vanilla scan asserts Iron armor present, `TotalArmo > 500`, `GroupedSets > 50`, at least one creature-race skip, and a <= 10 s wall time (~1.2 s on this machine); the story-mod scan extracts a VIGILANT rar from `ModsForTests/QuestExpansiaon` to `%TEMP%/UW_Scan_*` with the Phase 0 extractor, asserts > 0 sets, and cleans up.
 
 ## Status
 
-The pipeline is complete end-to-end (`ScanAsync(CatalogSource, ct)` -> deterministic `Catalog`, persisted via `CatalogCacheStore` with probe invalidation, diagnostics via `ScanReport`). Next: Sprint 1.6 (goldens + catalog API facade), then the real vanilla tuning pass (Sprint 1.7).
+The pipeline is complete end-to-end (`ScanAsync(CatalogSource, ct)` -> deterministic `Catalog`, persisted via `CatalogCacheStore` with probe invalidation, diagnostics via `ScanReport`). Sprint 1.6 shipped repeatable CI output (committed golden plugin + catalog JSON, no external data needed for `Category!=Integration`) and real-data coverage gated behind `Category=Integration`: the vanilla scan groups 4197 ARMO into 3360 sets in ~1.2 s with 377 skips. Next: Sprint 1.7 (logging/reporting/docs), which includes the real-data set-integrity tuning on the Outfit-first agreement rule - on real vanilla data the plain Iron kit is captured by the NPC composition outfit `BandedIronAllOutfit` while the base `iron` set keeps only the shield, so the 1.7.3 pass will re-balance Outfit keys for generic armor.

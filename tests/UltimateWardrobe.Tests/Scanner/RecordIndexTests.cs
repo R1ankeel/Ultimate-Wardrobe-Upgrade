@@ -62,7 +62,8 @@ public sealed class RecordIndexTests
 
         Assert.True(index.TryResolveKeyword(SyntheticSkyrimMods.WeightKeywordKey, out var keyword));
         Assert.Equal("ArmorHeavy", keyword.EditorID);
-        Assert.Equal(1, index.KeywordCount);
+        Assert.True(index.TryResolveKeyword(SyntheticSkyrimMods.MainHeavyKeywordKey, out _));
+        Assert.Equal(2, index.KeywordCount);
 
         Assert.False(index.TryResolveKeyword(SyntheticSkyrimMods.NonWeightKeywordKey, out _));
     }

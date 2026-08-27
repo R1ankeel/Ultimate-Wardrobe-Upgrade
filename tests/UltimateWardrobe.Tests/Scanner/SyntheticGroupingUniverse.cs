@@ -116,7 +116,7 @@ internal static class SyntheticGroupingUniverse
         mod.Keywords.Add(new Keyword(ClothingKeywordKey, SkyrimRelease.SkyrimSE) { EditorID = "ArmorClothing" });
 
         mod.Races.Add(new Race(BoarRaceKey, SkyrimRelease.SkyrimSE) { EditorID = "BoarRace" });
-        mod.Races.Add(new Race(NordVampireRaceKey, SkyrimRelease.SkyrimSE) { EditorID = "NordVampire" });
+        mod.Races.Add(new Race(NordVampireRaceKey, SkyrimRelease.SkyrimSE) { EditorID = "NordRaceVampire" });
 
         AddArmor(mod, NcCuirassKey, NcCuirassAddonKey, "DLC2NordicCarvedCuirass", BipedObjectFlag.Body, race: null);
         AddArmor(mod, NcHelmetKey, NcHelmetAddonKey, "DLC2NordicCarvedHelmet", BipedObjectFlag.Head, race: null);

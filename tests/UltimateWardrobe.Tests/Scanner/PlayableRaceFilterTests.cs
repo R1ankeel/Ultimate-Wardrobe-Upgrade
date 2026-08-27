@@ -6,16 +6,16 @@ namespace UltimateWardrobe.Tests.Scanner;
 public sealed class PlayableRaceFilterTests
 {
     [Theory]
-    [InlineData("Argonian")]
-    [InlineData("Breton")]
-    [InlineData("DarkElf")]
-    [InlineData("HighElf")]
-    [InlineData("Imperial")]
-    [InlineData("Khajiit")]
-    [InlineData("Nord")]
-    [InlineData("Orc")]
-    [InlineData("Redguard")]
-    [InlineData("WoodElf")]
+    [InlineData("ArgonianRace")]
+    [InlineData("BretonRace")]
+    [InlineData("DarkElfRace")]
+    [InlineData("HighElfRace")]
+    [InlineData("ImperialRace")]
+    [InlineData("KhajiitRace")]
+    [InlineData("NordRace")]
+    [InlineData("OrcRace")]
+    [InlineData("RedguardRace")]
+    [InlineData("WoodElfRace")]
     public void IsInPlayableWhitelist_AllTenBaseRaces(string raceEditorId)
     {
         Assert.True(PlayableRaceFilter.IsInPlayableWhitelist(raceEditorId));
@@ -23,20 +23,27 @@ public sealed class PlayableRaceFilterTests
     }
 
     [Theory]
-    [InlineData("ArgonianVampire")]
-    [InlineData("BretonVampire")]
-    [InlineData("DarkElfVampire")]
-    [InlineData("HighElfVampire")]
-    [InlineData("ImperialVampire")]
-    [InlineData("KhajiitVampire")]
-    [InlineData("NordVampire")]
-    [InlineData("OrcVampire")]
-    [InlineData("RedguardVampire")]
-    [InlineData("WoodElfVampire")]
+    [InlineData("ArgonianRaceVampire")]
+    [InlineData("BretonRaceVampire")]
+    [InlineData("DarkElfRaceVampire")]
+    [InlineData("HighElfRaceVampire")]
+    [InlineData("ImperialRaceVampire")]
+    [InlineData("KhajiitRaceVampire")]
+    [InlineData("NordRaceVampire")]
+    [InlineData("OrcRaceVampire")]
+    [InlineData("RedguardRaceVampire")]
+    [InlineData("WoodElfRaceVampire")]
     public void IsInPlayableWhitelist_AllTenVampireVariants_NeverSkip(string raceEditorId)
     {
         Assert.True(PlayableRaceFilter.IsInPlayableWhitelist(raceEditorId));
         Assert.False(PlayableRaceFilter.IsBaseRaceId(raceEditorId));
+    }
+
+    [Fact]
+    public void IsInPlayableWhitelist_DefaultRace_UniversalHumanArmor_NeverSkips()
+    {
+        Assert.True(PlayableRaceFilter.IsInPlayableWhitelist("DefaultRace"));
+        Assert.False(PlayableRaceFilter.IsBaseRaceId("DefaultRace"));
     }
 
     [Theory]
@@ -44,7 +51,11 @@ public sealed class PlayableRaceFilterTests
     [InlineData("ChaurusRace")]
     [InlineData("ChickenRace")]
     [InlineData("CaveBearRace")]
-    [InlineData("MudCrab")]
+    [InlineData("MudcrabRace")]
+    [InlineData("NordRaceChild")]
+    [InlineData("ElderRace")]
+    [InlineData("DraugrRace")]
+    [InlineData("WerewolfBeastRace")]
     [InlineData("")]
     public void IsInPlayableWhitelist_CreatureRaces_Skip(string raceEditorId)
     {
@@ -58,8 +69,8 @@ public sealed class PlayableRaceFilterTests
     }
 
     [Fact]
-    public void WhitelistIsCaseSensitive_LowercaseNordNeverMatches()
+    public void WhitelistIsCaseSensitive_LowercaseNordRaceNeverMatches()
     {
-        Assert.False(PlayableRaceFilter.IsInPlayableWhitelist("nord"));
+        Assert.False(PlayableRaceFilter.IsInPlayableWhitelist("nordrace"));
     }
 }

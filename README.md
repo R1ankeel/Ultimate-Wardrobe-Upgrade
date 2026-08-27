@@ -1,4 +1,4 @@
-# UltimateWardrobe
+# UltimateWardrobe (WIP - not usable)
 
 Ultimate Wardrobe Upgrade - Product Description
 
@@ -93,6 +93,7 @@ Standalone application for building full visual replacers for Skyrim SE armor an
   - Sprint 1.3 ArmorSet grouping heuristic - done (`PlayableRaceFilter` creature-skin pre-filter, `OutfitSetKeyResolver` Outfit-first signal with EDID/mesh fallback, `KeyNormalizer` + `PieceTypeDetector`, `ArmorSetGrouper` with per-reason skip breakdown; split-membership set lands in ONE `ArmorSet`; 226 tests green)
   - Sprint 1.4 Gender / Weight split - done (`BipedSlotMapper` frozen slot table, `GenderWeightDetector` weight from KEYW with ArmorType bonus + gender from ID/mesh/ARMA signals with Unisex fallback warning, `VariantAssembler` one variant per (Gender, Weight) with same-ARMO two-Piece split; Iron acceptance produces Male Heavy + Female Heavy; 270 tests green)
   - Sprint 1.5 Catalog model + cache - done (`FolderCatalogScanner.ScanAsync` pipeline with cancellation, deterministic `Catalog`; `ScanReport` warning dedup/sort + `ScanStats` + per-record exception routing; `CatalogCacheStore` canonical JSON + `CatalogSource` converter + `IsFresh` probe invalidation; round-trip value identity + stale-probe invalidates cache; 297 tests green)
+  - Sprint 1.6 Tests + goldens - done (committed static golden plugin `tests/TestData/Plugins/MiniUniverse.esp` + golden catalog JSON regenerated via `UW_WRITE_GOLDENS=1`; snapshot compare normalizes the scan root to `<root>`; negative-path suite for corrupt/empty/missing-master plugins; `PlayableRaceFilter` whitelist corrected to real RACE EditorIDs (`NordRace` etc.) + `DefaultRace` universal fallback, verified on the real vanilla scan; Integration-gated real-data tests - vanilla scan (4197 ARMO, 3360 sets, ~1.2 s) + VIGILANT story-mod scan from rar with cleanup; full suite 318 tests green)
 
 ## Stack
 
@@ -129,10 +130,10 @@ dotnet test
 - `Docs/architecture.md` - architecture overview
 - `Docs/domain-model.md` - domain model (Sprint 0.1 - done)
 - `Docs/archive-layer.md` - archive layer (Sprint 0.2 - done)
-- `Docs/scanner.md` - folder catalog scanner, grouping + gender/weight variants, catalog + cache (Sprint 1.5 - done)
+- `Docs/scanner.md` - folder catalog scanner, grouping + gender/weight variants, catalog + cache, committed goldens + integration gates (Sprint 1.6 - done)
 
 ## Test Assets
 
-Real mod archives for manual integration testing are under `ModsForTests/` (gitignored outputs, never committed). Small synthetic goldens are under `tests/TestData/Archives/`.
+Real mod archives for manual integration testing are under `ModsForTests/` (gitignored outputs, never committed). Small synthetic goldens are under `tests/TestData/Archives/`; scanner goldens under `tests/TestData/Plugins/` + `tests/TestData/CatalogGolden/` (committed, regenerated via `UW_WRITE_GOLDENS=1`).
 
 Game ESMs for reference: `D:\Skymod\Stock Game` (read-only).
