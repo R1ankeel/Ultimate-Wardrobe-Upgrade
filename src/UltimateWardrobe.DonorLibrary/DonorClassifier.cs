@@ -12,11 +12,14 @@ namespace UltimateWardrobe.DonorLibrary;
 /// heuristics via <see cref="MeshPathIndexer"/> + <see cref="MeshSetAssembler"/>, Sprint 2.2),
 /// and fills the <see cref="DonorAsset.FileManifest"/> from the folder. Branch 1 with zero
 /// <see cref="DonorProvidedSet"/>s (missing masters, or a plugin with no groupable armor) falls
-/// through to branch 2 with a logged reason (2.1.4). Branch 3 detectors and
-/// <see cref="DonorAssetKind"/> land in Sprint 2.3; until then the kind stays honest -
-/// <see cref="DonorAssetKind.Unknown"/>, empty flag lists. The asset's archive identity (real
-/// hash, file name, timestamps) is merged by <see cref="DonorLibraryService"/> in Sprint 2.4 -
-/// the classifier itself only fabricates a documented placeholder for the archive hash.
+/// through to branch 2 with a logged reason (2.1.4). Branch 3 (Sprint 2.3) runs for EVERY
+/// classification regardless of branch 1/2: <see cref="BodySlideDetector"/> +
+/// <see cref="PhysicsDetector"/> fill <see cref="DonorAsset.DetectedBodySlideFiles"/> /
+/// <see cref="DonorAsset.DetectedPhysicsFiles"/> and <see cref="DonorKindDetector"/> derives
+/// <see cref="DonorAssetKind"/> from the 4.3 table (flags are independent of Kind). The asset's
+/// archive identity (real hash, file name, timestamps) is merged by
+/// <see cref="DonorLibraryService"/> in Sprint 2.4 - the classifier itself only fabricates a
+/// documented placeholder for the archive hash.
 /// </summary>
 public sealed class DonorClassifier : IDonorClassifier
 {
@@ -26,6 +29,8 @@ public sealed class DonorClassifier : IDonorClassifier
     private readonly DonorScanPipeline _pipeline;
     private readonly ReferenceMasterMerger _merger;
     private readonly MeshPathIndexer _indexer;
+    private readonly BodySlideDetector _bodySlideDetector;
+    private readonly PhysicsDetector _physicsDetector;
     private readonly ILogger<DonorClassifier> _logger;
 
     public DonorClassifier(
@@ -33,12 +38,16 @@ public sealed class DonorClassifier : IDonorClassifier
         DonorScanPipeline? pipeline = null,
         ReferenceMasterMerger? merger = null,
         MeshPathIndexer? indexer = null,
+        BodySlideDetector? bodySlideDetector = null,
+        PhysicsDetector? physicsDetector = null,
         ILogger<DonorClassifier>? logger = null)
     {
         _probe = probe ?? new DonorPluginProbe();
         _pipeline = pipeline ?? new DonorScanPipeline();
         _merger = merger ?? new ReferenceMasterMerger();
         _indexer = indexer ?? new MeshPathIndexer();
+        _bodySlideDetector = bodySlideDetector ?? new BodySlideDetector();
+        _physicsDetector = physicsDetector ?? new PhysicsDetector();
         _logger = logger ?? NullLogger<DonorClassifier>.Instance;
     }
 
@@ -78,9 +87,20 @@ public sealed class DonorClassifier : IDonorClassifier
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        var providedSets = ClassifyBranch(extractedDir, probe, catalogHint, warnings, cancellationToken);
+        var branch = ClassifyBranch(extractedDir, probe, catalogHint, warnings, cancellationToken);
 
         cancellationToken.ThrowIfCancellationRequested();
+
+        var bodySlideFiles = _bodySlideDetector.Detect(extractedDir);
+        var setMeshPaths = branch.Sets
+            .SelectMany(s => s.Variants)
+            .SelectMany(v => v.Pieces)
+            .Select(p => p.MeshPath)
+            .Where(p => p is not null)
+            .Cast<string>()
+            .ToList();
+        var physicsFiles = _physicsDetector.Detect(extractedDir, setMeshPaths);
+        var kind = DonorKindDetector.Derive(branch.Sets, branch.ViaPlugin, bodySlideFiles, physicsFiles);
 
         var manifest = Directory.EnumerateFiles(extractedDir, "*.*", SearchOption.AllDirectories)
             .Select(path => new DonorFileEntry(Path.GetRelativePath(extractedDir, path).Replace('\\', '/'), new FileInfo(path).Length))
@@ -94,18 +114,29 @@ public sealed class DonorClassifier : IDonorClassifier
         var folderName = Path.GetFileName(Path.TrimEndingDirectorySeparator(extractedDir));
         var importId = Guid.TryParse(folderName, out var parsed) ? parsed : Guid.NewGuid();
 
+        _logger.LogInformation(
+            "Classification {Folder}: branch {Branch} -> Kind {Kind}; {BodySlide} BodySlide files, {Physics} physics files, {SetCount} ProvidedSets",
+            folderName,
+            branch.ViaPlugin ? "1" : "2",
+            kind,
+            bodySlideFiles.Count,
+            physicsFiles.Count,
+            branch.Sets.Count);
+
         return new DonorAsset(
             importId,
             folderName,
             extractedDir,
             DateTime.UtcNow,
             PendingClassificationHash,
-            DonorAssetKind.Unknown,
-            providedSets,
-            manifest);
+            kind,
+            branch.Sets,
+            manifest,
+            bodySlideFiles,
+            physicsFiles);
     }
 
-    private IReadOnlyList<DonorProvidedSet> ClassifyBranch(
+    private BranchResult ClassifyBranch(
         string extractedDir,
         DonorPluginProbeResult probe,
         Catalog? catalogHint,
@@ -114,7 +145,7 @@ public sealed class DonorClassifier : IDonorClassifier
     {
         if (probe.Main is null)
         {
-            return ClassifyViaMeshHeuristics(extractedDir, probe, warnings);
+            return new BranchResult(ClassifyViaMeshHeuristics(extractedDir, probe, warnings), ViaPlugin: false);
         }
 
         var folderName = Path.GetFileName(Path.TrimEndingDirectorySeparator(extractedDir));
@@ -122,7 +153,7 @@ public sealed class DonorClassifier : IDonorClassifier
 
         if (viaPlugin.Count > 0)
         {
-            return viaPlugin;
+            return new BranchResult(viaPlugin, ViaPlugin: true);
         }
 
         _logger.LogWarning(
@@ -133,7 +164,7 @@ public sealed class DonorClassifier : IDonorClassifier
             $"Branch 1 (plugin classification) produced no ProvidedSets - the donor esp carries no groupable armor " +
             "(no ARMO records, missing masters, or every armor was skipped); falling back to branch 2 (mesh heuristics)."));
 
-        return ClassifyViaMeshHeuristics(extractedDir, probe, warnings);
+        return new BranchResult(ClassifyViaMeshHeuristics(extractedDir, probe, warnings), ViaPlugin: false);
     }
 
     private IReadOnlyList<DonorProvidedSet> ClassifyViaPlugin(
@@ -198,4 +229,6 @@ public sealed class DonorClassifier : IDonorClassifier
 
         return sets;
     }
+
+    private sealed record BranchResult(IReadOnlyList<DonorProvidedSet> Sets, bool ViaPlugin);
 }

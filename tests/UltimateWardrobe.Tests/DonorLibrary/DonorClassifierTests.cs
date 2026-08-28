@@ -67,7 +67,7 @@ public class DonorClassifierTests : IDisposable
 
         var donor = await _classifier.ClassifyAsync(dir);
 
-        donor.Kind.Should().Be(DonorAssetKind.Unknown);
+        donor.Kind.Should().Be(DonorAssetKind.FullReplacer);
         donor.ProvidedSets.Should().ContainSingle().Which.Id.Should().Be("iron");
         donor.FileManifest.Should().HaveCount(2);
         donor.FileManifest.Should().NotContain(e => e.RelativePath == "_meta.json");
@@ -84,7 +84,7 @@ public class DonorClassifierTests : IDisposable
 
         var donor = await _classifier.ClassifyAsync(dir);
 
-        donor.Kind.Should().Be(DonorAssetKind.Unknown);
+        donor.Kind.Should().Be(DonorAssetKind.FullReplacer);
         donor.ProvidedSets.Should().NotBeEmpty();
         donor.ProvidedSets.Should().Contain(s => s.Id == "iron");
         donor.FileManifest.Should().Contain(e => e.RelativePath == SyntheticSkyrimMods.MainFileName);

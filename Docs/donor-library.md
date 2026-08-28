@@ -1,6 +1,6 @@
 # Donor Library: Import + Classification
 
-> Phase 2, Sprints 2.0-2.2 done - `src/UltimateWardrobe.DonorLibrary` - graduated classification for extracted donor folders: branch 1 runs the Phase 1 scanner pipeline over donor plugins (optionally enriched with reference game esms), branch 2 classifies mesh/texture replacers from paths alone, branch 3 adds BodySlide/physics detection and `DonorAssetKind` (lands in Sprint 2.3).
+> Phase 2, Sprints 2.0-2.3 done - `src/UltimateWardrobe.DonorLibrary` - graduated classification for extracted donor folders: branch 1 runs the Phase 1 scanner pipeline over donor plugins (optionally enriched with reference game esms), branch 2 classifies mesh/texture replacers from paths alone, branch 3 detects BodySlide/physics artifacts and derives `DonorAssetKind`.
 
 ## Overview
 
@@ -30,9 +30,9 @@ User drops an archive
 | `MeshPathIndexer.cs` | Branch 2: `meshes/**/*.nif` + `textures/**/*.dds` folder grouping (Sprint 2.2) |
 | `DonorNameHeuristics.cs` | Gender/weight/piece tokens from paths and stems (Sprint 2.2) |
 | `MeshSetAssembler.cs` | Branch 2: ProvidedSets from mesh groups with texture linkage (Sprint 2.2) |
-| `BodySlideDetector.cs` | `CalienteTools/BodySlide` globbing (Sprint 2.3, not yet present) |
-| `PhysicsDetector.cs` | hdt/cbpc/physics/tri globbing (Sprint 2.3, not yet present) |
-| `DonorKindDetector.cs` | `FullReplacer | BodyConversionPatch | PhysicsPatch | Unknown` (Sprint 2.3, not yet present) |
+| `BodySlideDetector.cs` | Branch 3: `CalienteTools/BodySlide` globbing - SliderSets `*.osp`, SliderGroups `*.xml`, root `.xml` (Sprint 2.3) |
+| `PhysicsDetector.cs` | Branch 3: hdt/cbpc/physics/tri globbing + `SKSE/Plugins` configs (Sprint 2.3) |
+| `DonorKindDetector.cs` | Branch 3: `FullReplacer | BodyConversionPatch | PhysicsPatch | Unknown` (Sprint 2.3) |
 | `DonorLibraryService.cs` | `ImportAsync` / `RemoveAsync` / `ReclassifyAsync`, project guard (Sprint 2.4, not yet present) |
 
 ## Branch routing (DonorClassifier)
@@ -49,10 +49,10 @@ The assembled `DonorAsset`:
 - `ImportId` = the `Source/<ImportId>/` folder name when it parses as `Guid`, else a fresh one
 - `OriginalFileName` = folder name, `ExtractedPath` = the folder, `ImportedAt` = UTC now
 - `ArchiveHash` = `classification-pending` placeholder until Sprint 2.4
-- `Kind` = `Unknown` until Sprint 2.3 (stays honest - no fabricated kind)
+- `Kind` = branch 3 output (`DonorKindDetector`, Sprint 2.3) - `Unknown` stays honest when nothing matches
 - `ProvidedSets` = branch output
 - `FileManifest` = relative paths (slash-normalized) + sizes, `_meta.json` excluded, ordinal by path
-- `DetectedBodySlideFiles` / `DetectedPhysicsFiles` = empty until Sprint 2.3
+- `DetectedBodySlideFiles` / `DetectedPhysicsFiles` = branch 3 output (game-relative, ordinal; flags independent of Kind)
 
 Branch 1 with zero sets means "the donor esp carries no groupable armor (no ARMO, missing masters, or every armor was skipped)". A `LogLevel.Warning` reason plus a `ScanWarning` are emitted before routing to branch 2.
 
@@ -79,7 +79,7 @@ Branch 1 with zero sets means "the donor esp carries no groupable armor (no ARMO
 
 ### Classifier skeleton (2.0.4)
 
-Implements `IDonorClassifier`; validates `extractedDir` (friendly `DirectoryNotFoundException`); routes on `probe.Main`; branch 2 (Sprint 2.2) runs the mesh/texture heuristics; `Kind = Unknown`, empty flags until Sprint 2.3. Mutagen note: `ModKey.FileName` is a `FilePath`, not a `string` - ordering uses `.Name` and the extension rank uses `.ToString()`.
+Implements `IDonorClassifier`; validates `extractedDir` (friendly `DirectoryNotFoundException`); routes on `probe.Main`; branch 2 (Sprint 2.2) runs the mesh/texture heuristics; branch 3 (Sprint 2.3) fills Detected* + Kind for every classification. Mutagen note: `ModKey.FileName` is a `FilePath`, not a `string` - ordering uses `.Name` and the extension rank uses `.ToString()`.
 
 ## Sprint 2.1 - classify via plugin + reference-master merge
 
@@ -136,7 +136,39 @@ Pure static functions over mesh/texture stems and relative paths.
 - Derived: gender/weight from the stem + game-relative path; EditorId = baseStem (keeps gender markers), `FormId = 0`, Slot = piece word.
 - A `Variant` per distinct `(gender, weight)` ordered by enum; pieces ordered by slot.
 - Textures: indexed per set, each texture stem mapped through the piece-word table, deduped + ordinal, attached to the piece with the matching slot - the mirror of the branch-1 TXST correlation output.
-- Empty mesh index: early return, no sets, no crash - so texture-only replacers classify as `Unknown` until Sprint 2.3.
+- Empty mesh index: early return, no sets, no crash - a texture-only replacer yields no ProvidedSets and (in the absence of BodySlide/physics flags) `Kind = Unknown`.
+
+## Sprint 2.3 - branch 3: BodySlide/physics detection + Kind
+
+Branch 3 runs for EVERY classification regardless of which branch produced the sets (2.3.4). `DonorTree.EnumerateAll` scans the whole folder in both layouts and normalizes every file to a game-relative path (drops the `Data/` prefix, matching the branch-2 `MeshPathIndexer` convention - Detected* lists line up with mesh paths and the Phase-1 `FileResolver`; the manifest keeps the raw prefix).
+
+### BodySlideDetector (2.3.1)
+
+From the normalized stream, flagged paths:
+
+- any `*.osp` under `CalienteTools/BodySlide/SliderSets/` (recursive - real packs nest per-set folders)
+- any `*.xml` under `CalienteTools/BodySlide/SliderGroups/` (recursive)
+- any `.xml` directly under the BodySlide root (the slider-group/preview xmls; deeper non-group xml such as `DropdownData/` is excluded)
+
+### PhysicsDetector (2.3.2)
+
+- any file whose NAME contains `hdt`/`smp`/`cbpc`/`physics` (case-insensitive) anywhere in the folder
+- under `SKSE/Plugins/`: the exact `hdtSMP64.dll`, `hdtSMP.xml`, `config.xml` plus every `*.json` (CBPC configs, recursive)
+- `*.tri` morphs - ONLY when the file's directory equals or is nested under a folder that received a ProvidedSet mesh (set mesh paths come from the assembled sets, so unrelated morphs are never flagged)
+
+Rules overlap (`hdtSMP64.dll` matches the token rule AND the exact-name rule) - the output is deduped, ordinal.
+
+### DonorKindDetector (2.3.3, plan 4.3 table)
+
+```
+ProvidedSets > 0 AND brought via branch 1 (donor ARMO)
+  OR meshes grouped into >= 1 set with a body piece   -> FullReplacer
+else SliderSets present                                -> BodyConversionPatch
+else physics files present                             -> PhysicsPatch
+else                                                    -> Unknown
+```
+
+Flags are independent of `Kind`: a `FullReplacer` may carry BodySlide/physics flags - only `Kind` picks the primary lane. The "body piece" rule is the discriminator between a genuine mesh-only body/armor replacer and a stray model resource: a branch-2 set qualifies only when at least one piece covers the body/torso (`Body`/`Skin`/`Cuirass`/`Armor`/`Clothes`/`Robe`/`Robes`/`Dress`). Recalibration point: real-donor tuning in Sprint 2.5.
 
 ## Determinism
 
@@ -155,8 +187,9 @@ Pure static functions over mesh/texture stems and relative paths.
 - Sprint 2.0: 18 new tests (2 Core amendments + 10 `DonorPluginProbeTests` + 6 `DonorClassifierTests`) - empty folder -> `Unknown` with 0 sets and a manifest, missing-folder throw, loose-files (no plugins) -> manifest sizes, probe determinism, master chain, corrupt-plugin-as-candidate, layout variants.
 - Sprint 2.1: 16 new tests (6 `DonorReferenceMasterMergerTests` + 9 `DonorScanPipelineTests` + 1 classifier-net) - self-contained donor classifies into the expected set with Male + Female Heavy variants and manifest coverage; keyword record inside a bundled fake master resolves; plugin with 0 ARMO falls through to branch 2; reference resolves a keyword without leaking reference armors; reference-dependent donor without a hint falls through; donor-bundled copy wins over a same-named reference; corrupt donor warns and falls through; corrupt reference warns and is skipped; pipeline reports donor/reference counts.
 - Sprint 2.2: 45 new tests (`MeshPathIndexerTests` 7, `DonorNameHeuristicsTests` 30, `DonorMeshAssemblerTests` 8) - indexer layout globbing/dedupe/empty; heuristics unit cases incl. gender precedence and weight substring+priority; branch-2 end-to-end: iron male/female kit family + texture linkage + slot order + `FormId 0`, clothes path from a `Data/` layout, unhelpful `meshes/zzzztexture` folder falls back to the `zzzztexture` key with an `Other` piece, LOD/_1st one-piece-with-preferred-path while alternates stay manifest-only, texture-only folder yields no sets without crashing, heavy-token weight class, mesh-only determinism (projected shape + manifest equality), and esp-fall-through classifies via branch 2. Helper `DonorMeshTreeBuilder` writes runtime files - no Mutagen for branch 2. The pre-2.2 `LooseFiles_NoPlugins_...` test (written when branch 2 did not exist) now asserts the `iron` set while keeping its manifest-size focus.
-- Full suite 407/407 green (was 362, +45), Release 0 warnings/0 errors, no temp `UW_Donor_*` dirs, no `TestResults/`.
+- Sprint 2.3: 27 new tests (`BodySlideDetectorTests` 5, `PhysicsDetectorTests` 6, `DonorKindDetectorTests` 8, `DonorKindClassifierTests` 8) - the four archetypes classify to the expected Kind (bodySlide-only -> BodyConversionPatch, physics-only -> PhysicsPatch, meshes+esp -> FullReplacer, meshes+bodySlide -> FullReplacer WITH flag, empty -> Unknown); tri morphs flagged only under set mesh folders; Data-layout stripping; both-layout dedup; slider-wins-over-physics priority; branch-1 Ring-only set is FullReplacer while a branch-2 Ring-only mesh set falls to the flag kinds. Four pre-2.3 Kind assertions updated from `Unknown` to `FullReplacer` (branch-1 plugin, mesh-only iron kit, loose-file `iron` set); empty/texture-only/zero-ARMO cases keep `Unknown`.
+- Full suite 434/434 green (was 407, +27), Release 0 warnings/0 errors, no temp `UW_Donor_*` dirs, no `TestResults/`.
 
 ## Status
 
-Sprints 2.0-2.2 are complete: import-time manifest, plugin probe, branch-1 classification with optional reference enrichment, branch-2 mesh/texture heuristics (esp-less donors produce real `ProvidedSets`), and deterministic classification for all folder shapes. Branch 3 (BodySlide/physics/kind), the `DonorLibraryService` import flow, golden snapshots, real-donor integration tests, and the final docs pass land in Sprints 2.3-2.5.
+Sprints 2.0-2.3 are complete: import-time manifest, plugin probe, branch-1 classification with optional reference enrichment, branch-2 mesh/texture heuristics (esp-less donors produce real `ProvidedSets`), branch-3 BodySlide/physics detection + `DonorAssetKind` derivation (flags independent of Kind), and deterministic classification for all folder shapes. The `DonorLibraryService` import flow, golden snapshots, real-donor integration tests, and the final docs pass land in Sprints 2.4-2.5.

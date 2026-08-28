@@ -40,7 +40,7 @@ public class DonorScanPipelineTests : IDisposable
 
         var donor = await new DonorClassifier().ClassifyAsync(dir);
 
-        donor.Kind.Should().Be(DonorAssetKind.Unknown);
+        donor.Kind.Should().Be(DonorAssetKind.FullReplacer);
         donor.FileManifest.Should().Contain(e => e.RelativePath == DonorModBuilder.SelfContainedFileName);
 
         var set = SingleSet(donor);

@@ -44,7 +44,7 @@ public class DonorMeshAssemblerTests : IDisposable
 
         var donor = await new DonorClassifier().ClassifyAsync(dir);
 
-        donor.Kind.Should().Be(DonorAssetKind.Unknown);
+        donor.Kind.Should().Be(DonorAssetKind.FullReplacer);
         var set = donor.ProvidedSets.Should().ContainSingle().Subject;
         set.Id.Should().Be("iron");
         set.DisplayName.Should().Be("Iron");
