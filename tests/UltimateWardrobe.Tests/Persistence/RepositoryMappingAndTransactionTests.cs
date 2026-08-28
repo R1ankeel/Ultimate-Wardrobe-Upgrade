@@ -118,6 +118,23 @@ public class RepositoryMappingAndTransactionTests
     }
 
     [Fact]
+    public async Task BeginAsync_Reissues_DeferForeignKeys_On_Every_Transaction()
+    {
+        await using var test = await RepositoryTestDb.CreateAsync();
+
+        // defer_foreign_keys is a TRANSACTION-level pragma (plan 4.3.1 implementation note): SQLite
+        // resets it to OFF after every commit/rollback, so the UnitOfWork must re-issue it inside
+        // EACH new transaction on the long-lived connection. A 0 on the 2nd/3rd iteration would
+        // prove the bug (the pragma was only set once at open).
+        for (var i = 0; i < 3; i++)
+        {
+            await test.Uow.BeginAsync(CancellationToken.None);
+            (await TestHelpers.ScalarAsync(test.Uow, "PRAGMA defer_foreign_keys;")).Should().Be(1);
+            await test.Uow.CommitAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public async Task Transaction_Rollback_Leaves_No_Partial_Rows()
     {
         await using var test = await RepositoryTestDb.CreateAsync();

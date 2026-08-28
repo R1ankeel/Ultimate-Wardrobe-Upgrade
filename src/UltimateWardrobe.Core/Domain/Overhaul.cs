@@ -31,6 +31,14 @@ public sealed class Overhaul
     /// </summary>
     public DateTime? ModifiedAt { get; init; }
 
+    /// <summary>
+    /// The scanned source <see cref="Catalog"/> this overhaul maps over (Phase 4 Sprint 4.3 Core
+    /// amendment - the domain side of the per-overhaul <c>CatalogCache</c> row). Additive <c>init</c>,
+    /// <c>null</c> until a scan attaches it; <c>IProjectStore</c> persists it to the
+    /// <c>CatalogCache</c> table on save and restores it on load. Existing construction is unaffected.
+    /// </summary>
+    public Catalog? Catalog { get; init; }
+
     public Overhaul(Guid id, string name, Guid projectId, CatalogSource source)
     {
         if (id == Guid.Empty) throw new ArgumentException("Id must not be empty.", nameof(id));

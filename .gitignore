@@ -18,8 +18,10 @@ runtimes/win-x64/native/*.pdb
 Source/
 *.bak
 *.tmp
-project.db
-project.db-journal
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
 CatalogCache/
 Export/
 
