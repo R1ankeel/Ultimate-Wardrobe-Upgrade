@@ -14,7 +14,7 @@ UltimateWardrobe.sln
 ├── src/UltimateWardrobe.DonorLibrary# Phase 2 donor classification + service (branches 1-3 + import flow, Sprints 2.0-2.5 done)
 ├── src/UltimateWardrobe.Mapping     # (Phase 3 done) manual mapping + patch detection + status/progress (Sprints 3.0-3.4 done - CRUD/validation + patch detection + set status/progress + determinism + real-donor Integration spot-check; Core 3.0.2 amendment: PatchPolicy + Overhaul.Policy)
 ├── src/UltimateWardrobe.Persistence # Phase 4 SQLite (Phase 4 done, Sprints 4.0-4.4 - project + Microsoft.Data.Sqlite + ProjectDatabase WAL/foreign_keys bootstrap + Migrator/M001_Initial schema + .bak backup + UnitOfWork re-issuing PRAGMA defer_foreign_keys=ON per transaction + RowCodecs + 5 repositories + PersistenceJson row codecs + IProjectStore.SaveAsync/LoadAsync whole-graph round-trip + Integration real-donor spot-check; Core 4.0.2 amendment: Overhaul.CreatedAt/ModifiedAt; Core 4.3 amendment: Overhaul.Catalog)
-├── src/UltimateWardrobe.Patcher     # (Phase 5) ESP patcher + file slicer
+├── src/UltimateWardrobe.Patcher     # Phase 5 ESP patcher + file slicer (Sprint 5.0 done - Core IPatcher amendment + TargetResolver + PatchException; docs in Docs/patcher.md)
 ├── src/UltimateWardrobe.App         # (Phase 6) WPF
 └── tests/UltimateWardrobe.Tests     # xUnit + FluentAssertions
 ```
@@ -28,7 +28,7 @@ interface IArchiveExtractor { Task<ExtractResult> ExtractAsync(string archivePat
 interface ICatalogScanner   { Task<Catalog> ScanAsync(CatalogSource source, CancellationToken ct); }
 interface IDonorClassifier  { Task<DonorAsset> ClassifyAsync(string extractedDir, Catalog catalogHint, CancellationToken ct); }
 interface IProjectStore     { Task SaveAsync(Project project); Task<Project> LoadAsync(string projectDbPath); }
-interface IPatcher          { Task<PatchResult> BuildAsync(Overhaul overhaul, string outputDir, CancellationToken ct); }
+interface IPatcher          { Task<PatchResult> BuildAsync(Overhaul overhaul, DonorLibrary donorLibrary, string outputDir, IProgress<PatchProgress>? progress, CancellationToken ct); }
 ```
 
 ## Runtime Requirements
@@ -53,3 +53,5 @@ Per-project `global.json` pins SDK to `10.0.100` (`rollForward: latestFeature`).
 - `Docs/donor-library.md` - donor import + graduated classification (Phase 2, Sprints 2.0-2.5 done)
 - `Docs/mapping.md` - manual mapping + patch detection + status/progress + determinism + real-donor spot-check (Phase 3, Sprints 3.0-3.4 done)
 - `Docs/persistence.md` - SQLite project DB: schema, migrations + backup, repositories/`UnitOfWork`/`IProjectStore`, JSON serialization, test strategy (Phase 4, Sprints 4.0-4.4 done)
+- `Docs/patcher.md` - ESP patcher + target resolution + file slicer (Phase 5; Sprint 5.0 done - `TargetResolver` + Core `IPatcher`/`PatchReport` amendment)
+- `Plans/phase5.md` - Phase 5 plan, Sprint 5.0 done (Scaffolding + Core `IPatcher` amendment + `TargetResolver`)

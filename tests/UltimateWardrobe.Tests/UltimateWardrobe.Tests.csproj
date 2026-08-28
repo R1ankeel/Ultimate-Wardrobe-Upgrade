@@ -25,6 +25,7 @@
     <ProjectReference Include="..\..\src\UltimateWardrobe.Scanner\UltimateWardrobe.Scanner.csproj" />
     <ProjectReference Include="..\..\src\UltimateWardrobe.DonorLibrary\UltimateWardrobe.DonorLibrary.csproj" />
     <ProjectReference Include="..\..\src\UltimateWardrobe.Mapping\UltimateWardrobe.Mapping.csproj" />
+    <ProjectReference Include="..\..\src\UltimateWardrobe.Patcher\UltimateWardrobe.Patcher.csproj" />
     <ProjectReference Include="..\..\src\UltimateWardrobe.Persistence\UltimateWardrobe.Persistence.csproj" />
   </ItemGroup>
 
