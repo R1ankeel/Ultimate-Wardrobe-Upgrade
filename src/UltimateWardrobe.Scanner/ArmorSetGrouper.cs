@@ -57,11 +57,13 @@ public sealed class ArmorSetGrouper
         List<ScanWarning> warnings,
         CancellationToken cancellationToken = default)
     {
+        var armors = correlated.ToList();
+        var sharedMeshes = BuildSharedMeshSet(armors);
         var skipped = new Dictionary<SkipReason, int>();
         var accepted = new List<CorrelatedArmor>();
         var candidates = new List<CandidateKeySet>();
 
-        foreach (var armor in correlated)
+        foreach (var armor in armors)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -71,7 +73,7 @@ public sealed class ArmorSetGrouper
                 continue;
             }
 
-            var garbage = ClassifyGarbage(armor, index);
+            var garbage = ClassifyGarbage(armor, index, sharedMeshes);
             if (garbage is not null)
             {
                 Track(skipped, garbage.Value);
@@ -328,7 +330,7 @@ public sealed class ArmorSetGrouper
         return !PlayableRaceFilter.IsInPlayableWhitelist(race.EditorID);
     }
 
-    private static SkipReason? ClassifyGarbage(CorrelatedArmor armor, RecordIndex index)
+    private static SkipReason? ClassifyGarbage(CorrelatedArmor armor, RecordIndex index, IReadOnlySet<string> sharedMeshes)
     {
         if (armor.FirstAddon is null)
         {
@@ -359,12 +361,44 @@ public sealed class ArmorSetGrouper
             return SkipReason.Enchanted;
         }
 
+        // Sprint 6.9 mesh-sharing rule: a vanilla-enchanted variant reuses the exact world-model path
+        // of its unenchanted base kit (an Ench* EditorId whose ARMA resolves to an already-covered
+        // mesh), so it is a duplicate of the base kit row and is dropped. Enchanted records that own
+        // a unique mesh - unique robes, Arch-mage gear and so on - have the mesh to themselves and
+        // stay in the catalog.
+        if (IsEnchantedSharedMeshVariant(armor, sharedMeshes))
+        {
+            return SkipReason.Enchanted;
+        }
+
         if (armor.BipedFlags.HasFlag(BipedObjectFlag.Body) && !HasArmorKeyword(armor, index))
         {
             return SkipReason.NoKeyword;
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Mesh paths shared by more than one armor in the scan (case-insensitive). Fed to
+    /// <see cref="IsEnchantedSharedMeshVariant"/> so an enchanted duplicate of an already-covered
+    /// base-kit mesh is recognized (Sprint 6.9).
+    /// </summary>
+    private static HashSet<string> BuildSharedMeshSet(IReadOnlyList<CorrelatedArmor> armors)
+    {
+        return armors
+            .Where(a => a.MeshPath is not null)
+            .GroupBy(a => a.MeshPath!, StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static bool IsEnchantedSharedMeshVariant(CorrelatedArmor armor, IReadOnlySet<string> sharedMeshes)
+    {
+        return armor.EditorId.StartsWith("Ench", StringComparison.OrdinalIgnoreCase)
+               && armor.MeshPath is not null
+               && sharedMeshes.Contains(armor.MeshPath);
     }
 
     private static bool HasArmorKeyword(CorrelatedArmor armor, RecordIndex index)

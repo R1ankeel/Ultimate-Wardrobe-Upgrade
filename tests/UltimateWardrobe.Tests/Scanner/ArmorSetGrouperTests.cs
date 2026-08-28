@@ -249,11 +249,31 @@ public sealed class ArmorSetGrouperTests
         using var dir = new TestTempDir();
         var result = BuildFilteringGrouping(dir);
 
-        Assert.Equal(4, SkippedFor(result, SkipReason.Enchanted));
-        foreach (var editorId in new[] { "EnchMuffleBoots", "EnchOneHandedCuirass", "EnchDualRegenHelmet", "EnchLowercaseFireGauntlets" })
+        Assert.Equal(5, SkippedFor(result, SkipReason.Enchanted));
+        foreach (var editorId in new[] { "EnchMuffleBoots", "EnchOneHandedCuirass", "EnchDualRegenHelmet", "EnchLowercaseFireGauntlets", "EnchVariantBoots" })
         {
             Assert.DoesNotContain(result.Sets, s => s.Members.Any(m => m.EditorId == editorId));
         }
+    }
+
+    [Fact]
+    public void EnchantedSharedMeshVariant_SkippedAsEnchanted_BaseKitStays()
+    {
+        using var dir = new TestTempDir();
+        var result = BuildFilteringGrouping(dir);
+
+        Assert.DoesNotContain(result.Sets, s => s.Members.Any(m => m.EditorId == "EnchVariantBoots"));
+        Assert.Contains(result.Sets, s => s.Members.Any(m => m.EditorId == "SharedBaseBoots"));
+    }
+
+    [Fact]
+    public void EnchantedUniqueMesh_StaysInCatalog()
+    {
+        using var dir = new TestTempDir();
+        var result = BuildFilteringGrouping(dir);
+
+        var set = Assert.Single(result.Sets, s => s.Members.Any(m => m.EditorId == "EnchUniqueRobe"));
+        Assert.Equal("Ench Unique", set.DisplayName);
     }
 
     [Fact]
@@ -265,7 +285,7 @@ public sealed class ArmorSetGrouperTests
         var set = Assert.Single(result.Sets, s => s.Id == "plainheavy");
         Assert.Equal("Plain Heavy", set.DisplayName);
         Assert.Equal(2, SkippedFor(result, SkipReason.Jewelry));
-        Assert.Equal(4, SkippedFor(result, SkipReason.Enchanted));
+        Assert.Equal(5, SkippedFor(result, SkipReason.Enchanted));
         Assert.Equal(0, SkippedFor(result, SkipReason.NoSlot));
     }
 

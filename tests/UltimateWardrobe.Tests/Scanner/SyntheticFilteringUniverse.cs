@@ -8,11 +8,13 @@ using Noggog;
 namespace UltimateWardrobe.Tests.Scanner;
 
 /// <summary>
-/// Sprint 6.8 filter universe (manual-testing bugs 1 and 2): a standalone plugin whose records exercise
-/// the jewelry skip (ring, amulet), the keep-path (circlet - a head slot, not jewelry), and the
+/// Sprint 6.8/6.9 filter universe (manual-testing bugs 1 and 2): a standalone plugin whose records exercise
+/// the jewelry skip (ring, amulet), the keep-path (circlet - a head slot, not jewelry), the
 /// vanilla-enchantment name-suffix skip (single-word, multi-word, and &amp;-combined phrases, plus a
-/// case-insensitive match), while a plain kit stays grouped. Kept separate from the golden MiniUniverse
-/// and the Sprint 1.3 GroupingUniverse so their committed expectations stay untouched.
+/// case-insensitive match), the Sprint 6.9 shared-mesh skip (an Ench* variant reusing the base-kit
+/// mesh is dropped while the base kit stays and a unique-mesh enchanted robe stays), while a plain
+/// kit stays grouped. Kept separate from the golden MiniUniverse and the Sprint 1.3 GroupingUniverse
+/// so their committed expectations stay untouched.
 /// </summary>
 internal static class SyntheticFilteringUniverse
 {
@@ -52,6 +54,18 @@ internal static class SyntheticFilteringUniverse
 
     public static FormKey LowercaseFireAddonKey => new(Mod, 0xF27);
 
+    public static FormKey SharedBaseBootsKey => new(Mod, 0xF40);
+
+    public static FormKey SharedBaseBootsAddonKey => new(Mod, 0xF41);
+
+    public static FormKey EnchVariantBootsKey => new(Mod, 0xF42);
+
+    public static FormKey EnchVariantBootsAddonKey => new(Mod, 0xF43);
+
+    public static FormKey EnchUniqueRobeKey => new(Mod, 0xF44);
+
+    public static FormKey EnchUniqueRobeAddonKey => new(Mod, 0xF45);
+
     public static FormKey PlainCuirassKey => new(Mod, 0xF30);
 
     public static FormKey PlainCuirassAddonKey => new(Mod, 0xF31);
@@ -79,6 +93,16 @@ internal static class SyntheticFilteringUniverse
         AddArmor(mod, LowercaseFireKey, LowercaseFireAddonKey, "EnchLowercaseFireGauntlets", "Iron Gauntlets of fire",
             BipedObjectFlag.Hands, ArmorType.HeavyArmor);
 
+        // Sprint 6.9 mesh-sharing fixtures: the enchanted boots reuse the exact mesh of the plain
+        // base-kit boots (variant duplicate, dropped), while the enchanted robe owns a unique mesh
+        // and therefore stays in the catalog.
+        AddArmor(mod, SharedBaseBootsKey, SharedBaseBootsAddonKey, "SharedBaseBoots", "Daedric Boots",
+            BipedObjectFlag.Feet, ArmorType.HeavyArmor, meshName: "shared_daedric_boots.nif");
+        AddArmor(mod, EnchVariantBootsKey, EnchVariantBootsAddonKey, "EnchVariantBoots", "Daedric Boots of Brawn",
+            BipedObjectFlag.Feet, ArmorType.HeavyArmor, meshName: "shared_daedric_boots.nif");
+        AddArmor(mod, EnchUniqueRobeKey, EnchUniqueRobeAddonKey, "EnchUniqueRobe", "Robes of Quickening",
+            BipedObjectFlag.Body, ArmorType.Clothing, meshName: "unique_warlock_robe.nif");
+
         AddArmor(mod, PlainCuirassKey, PlainCuirassAddonKey, "PlainHeavyCuirass", "Steel Cuirass",
             BipedObjectFlag.Body, ArmorType.HeavyArmor);
 
@@ -94,7 +118,8 @@ internal static class SyntheticFilteringUniverse
         string editorId,
         string name,
         BipedObjectFlag flags,
-        ArmorType armorType)
+        ArmorType armorType,
+        string? meshName = null)
     {
         var keywordKey = armorType switch
         {
@@ -105,11 +130,13 @@ internal static class SyntheticFilteringUniverse
 
         var bodyTemplate = new BodyTemplate { FirstPersonFlags = flags, ArmorType = armorType };
 
+        var modelPath = "meshes/armor/" + (meshName ?? editorId + ".nif");
+
         var addon = new ArmorAddon(addonKey, SkyrimRelease.SkyrimSE)
         {
             EditorID = editorId + "AA",
             BodyTemplate = bodyTemplate,
-            WorldModel = new GenderedItem<Model?>(MakeModel(editorId + ".nif"), MakeModel(editorId + ".nif")),
+            WorldModel = new GenderedItem<Model?>(MakeModel(modelPath), MakeModel(modelPath)),
         };
         mod.ArmorAddons.Add(addon);
 
@@ -128,7 +155,7 @@ internal static class SyntheticFilteringUniverse
     {
         var model = new Model();
         var file = new AssetLink<SkyrimModelAssetType>();
-        file.TrySetPath("meshes/armor/" + path);
+        file.TrySetPath(path);
         model.File = file;
         return model;
     }
