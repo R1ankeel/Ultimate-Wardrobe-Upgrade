@@ -10,6 +10,12 @@ public sealed class NullAppDialogService : IAppDialogService
     public Task<string?> PickProjectFolderAsync(string title, string initialDirectory)
         => Task.FromResult<string?>(null);
 
+    public Task<string?> PickFolderAsync(string title, string initialDirectory)
+        => Task.FromResult<string?>(null);
+
+    public Task<string?> PromptTextAsync(string title, string message, string? initialValue = null)
+        => Task.FromResult<string?>(initialValue);
+
     public Task<bool> ConfirmAsync(string title, string message)
         => Task.FromResult(false);
 

@@ -3,16 +3,76 @@
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
       xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      xmlns:vm="clr-namespace:UltimateWardrobe.App.ViewModels"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
       mc:Ignorable="d"
       Title="Project">
 
-  <StackPanel Margin="24">
-    <TextBlock Text="Project" FontSize="24" FontWeight="SemiBold" />
-    <TextBlock Text="{Binding ProjectName, FallbackValue=No project}"
-               Margin="0,8,0,0"
-               Opacity="0.8" />
-    <TextBlock Text="Overhaul cards, progress and the donor library table arrive in Sprint 6.2/6.3."
-               Margin="0,24,0,0"
-               Opacity="0.6" />
-  </StackPanel>
+  <Page.Resources>
+    <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    <Style x:Key="CardButton" TargetType="Button">
+      <Setter Property="Padding" Value="10,4" />
+      <Setter Property="Margin" Value="6,0,0,0" />
+    </Style>
+  </Page.Resources>
+
+  <Grid Margin="24">
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="*" />
+      <ColumnDefinition Width="*" />
+      <ColumnDefinition Width="Auto" />
+      <ColumnDefinition Width="Auto" />
+    </Grid.ColumnDefinitions>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+
+    <TextBlock Grid.Row="0" Grid.ColumnSpan="4"
+               Text="{Binding ProjectName, FallbackValue=No project}"
+               FontSize="24" FontWeight="SemiBold" />
+
+    <TextBlock Grid.Row="1" Grid.ColumnSpan="4"
+               Text="{Binding ProjectRoot}"
+               Margin="0,4,0,0"
+               Opacity="0.7"
+               FontSize="12" />
+
+    <StackPanel Grid.Row="2" Grid.ColumnSpan="4" Orientation="Horizontal" Margin="0,20,0,12">
+      <ui:Button Content="Add vanilla overhaul" Command="{Binding AddVanillaOverhaulCommand}" />
+      <ui:Button Content="Add story mod overhaul" Style="{StaticResource CardButton}" Command="{Binding AddStoryModOverhaulCommand}" />
+    </StackPanel>
+
+    <ui:ListView Grid.Row="3" Grid.ColumnSpan="4"
+                 ItemsSource="{Binding Overhauls}"
+                 SelectedItem="{Binding SelectedOverhaul}"
+                 BorderThickness="1"
+                 Margin="0,0,0,0">
+      <ui:ListView.ItemTemplate>
+        <DataTemplate DataType="{x:Type vm:OverhaulCardViewModel}">
+          <Grid Margin="4,6" ColumnDefinitions="*,Auto">
+            <StackPanel>
+              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+              <StackPanel Orientation="Horizontal" Margin="0,4,0,0" Opacity="0.8">
+                <TextBlock Text="{Binding StatusLabel}" />
+                <TextBlock Text="  -  " />
+                <TextBlock Text="{Binding MappedCount, StringFormat={}{0} mapped}" />
+                <TextBlock Text=" / " />
+                <TextBlock Text="{Binding TotalSets, StringFormat={}{0} sets}" />
+                <TextBlock Text="  -  " />
+                <TextBlock Text="{Binding DoneFraction, StringFormat={}{0:P0} done}" />
+              </StackPanel>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+              <ui:Button Content="Open" Command="{Binding DataContext.SelectOverhaulCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" />
+              <ui:Button Content="Rename" Style="{StaticResource CardButton}" Command="{Binding DataContext.RenameOverhaulCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" />
+              <ui:Button Content="Delete" Style="{StaticResource CardButton}" Command="{Binding DataContext.DeleteOverhaulCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" />
+            </StackPanel>
+          </Grid>
+        </DataTemplate>
+      </ui:ListView.ItemTemplate>
+    </ui:ListView>
+  </Grid>
 </Page>

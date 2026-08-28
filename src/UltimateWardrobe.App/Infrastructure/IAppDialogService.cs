@@ -9,6 +9,10 @@ public interface IAppDialogService
 {
     Task<string?> PickProjectFolderAsync(string title, string initialDirectory);
 
+    Task<string?> PickFolderAsync(string title, string initialDirectory);
+
+    Task<string?> PromptTextAsync(string title, string message, string? initialValue = null);
+
     Task<bool> ConfirmAsync(string title, string message);
 
     Task AlertAsync(string title, string message);

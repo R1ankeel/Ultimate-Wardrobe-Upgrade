@@ -65,6 +65,23 @@ public sealed class RecentProjectsStore
             entries.RemoveRange(MaxEntries, entries.Count - MaxEntries);
         }
 
+        WriteEntries(entries);
+    }
+
+    public void RemoveRecentProject(string projectDbPath)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(projectDbPath);
+
+        var normalized = Path.GetFullPath(projectDbPath);
+        var entries = GetRecentProjectPaths()
+            .Where(existing => !string.Equals(Path.GetFullPath(existing), normalized, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        WriteEntries(entries);
+    }
+
+    private void WriteEntries(IReadOnlyList<string> entries)
+    {
         var directory = Path.GetDirectoryName(_settingsPath);
         if (!string.IsNullOrEmpty(directory))
         {
@@ -73,7 +90,7 @@ public sealed class RecentProjectsStore
 
         File.WriteAllText(
             _settingsPath,
-            JsonSerializer.Serialize(new RecentSettings { RecentProjects = entries }, JsonOptions));
+            JsonSerializer.Serialize(new RecentSettings { RecentProjects = entries.ToList() }, JsonOptions));
     }
 
     private static string DefaultSettingsPath()

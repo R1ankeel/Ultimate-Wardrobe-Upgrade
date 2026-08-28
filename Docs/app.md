@@ -1,6 +1,6 @@
 # App - WPF Shell
 
-> Phase 6 (Sprint 6.1 done) - `src/UltimateWardrobe.App` is the WPF desktop shell. `net10.0-windows`, `UseWPF=true`, CommunityToolkit.Mvvm ViewModels, WPF-UI 4.3.0 Fluent shell, Microsoft.Extensions.Hosting composition root, Serilog logging. This doc records the composition/host lifecycle, the startup gate, the WPF-UI 4.3.0 service wiring and the Sprint 6.1 spike conclusions.
+> Phase 6 (Sprints 6.1 + 6.2 done) - `src/UltimateWardrobe.App` is the WPF desktop shell. `net10.0-windows`, `UseWPF=true`, CommunityToolkit.Mvvm ViewModels, WPF-UI 4.3.0 Fluent shell, Microsoft.Extensions.Hosting composition root, Serilog logging. This doc records the composition/host lifecycle, the startup gate, the WPF-UI 4.3.0 service wiring, the Sprint 6.1 spike conclusions and the Sprint 6.2 project/overhaul management.
 
 ## Stack
 
@@ -29,7 +29,7 @@ A guarded marker type makes a second `Register` call on the same `IServiceCollec
 
 ## Startup gate - single project per process (amendment 7)
 
-`App.OnStartup` resolves `ProjectPickerWindow` (hosting `ProjectListViewModel`) and shows it modally BEFORE the shell. A canceled/empty picker leaves `IProjectSession` closed and the app calls `Shutdown(0)` with no shell. On a successful pick/create `ProjectListViewModel.OpenRootAsync` opens the `project.db` via `IProjectStoreFactory`, publishes the single open project on `IProjectSession`, records it in `RecentProjectsStore`, and raises `CloseRequested` so the picker closes. `App` then resolves and shows `MainWindow` scoped to that one project for the process lifetime. There is no in-app "switch/close project" command - relaunch to change projects. `ProjectListViewModel` stays headless-testable (hosted by the picker, not a navigation page).
+`App.OnStartup` resolves `ProjectPickerWindow` (hosting `ProjectListViewModel`) and shows it modally BEFORE the shell. A canceled/empty picker leaves `IProjectSession` closed and the app calls `Shutdown(0)` with no shell. On a successful pick/create `ProjectListViewModel.OpenRootAsync` opens the `project.db` via `IProjectStoreFactory`, publishes the single open project on `IProjectSession` (binding the shared `IProjectStore`), records it in `RecentProjectsStore`, and raises `CloseRequested` so the picker closes. "New project" genuinely creates `project.db` (fresh folder) and "Open project" loads an existing one; opening a folder without `project.db` in "Open" mode alerts and leaves the session untouched. `App` then resolves and shows `MainWindow` scoped to that one project for the process lifetime. There is no in-app "switch/close project" command - relaunch to change projects. `ProjectListViewModel` stays headless-testable (hosted by the picker, not a navigation page).
 
 ## WPF-UI 4.3.0 service wiring (the Sprint 6.1 spike result)
 
@@ -38,7 +38,7 @@ The exact wiring is resolved against the shipped 4.3.0 API and verified by a hea
 1. `Wpf.Ui.Abstractions.INavigationViewPageProvider` - WPF-UI 4.x RENAMED the planner's "IPageService" to this abstraction. Own implementation `AppNavigationViewPageProvider` resolves page instances from the composition root: `object GetPage(Type pageType) => _services.GetRequiredService(pageType)`.
 2. `Wpf.Ui.NavigationService` is registered in DI over that page provider and resolved as `Wpf.Ui.INavigationService`: `new Wpf.Ui.NavigationService(pageProvider)` (its ctor takes the `INavigationViewPageProvider`).
 3. In `MainWindow.OnLoaded` (surface method `InitializeNavigation`): `RootNavigation.SetPageProviderService(_pageProvider)` attaches the DI page provider to the `NavigationView` so item clicks resolve pages from DI, and `_navigationService.SetNavigationControl(RootNavigation)` binds the programmatic service to the same control. `RootNavigation.Navigate(typeof(ProjectView))` lands the first screen. The window's class doc for the shell navigation: `NavigationView` items (`NavigationViewItem`) declare `TargetPageType` and navigate through the page provider.
-4. Dialogs fall back to `Microsoft.Win32.OpenFolderDialog` for folder picking - WPF-UI 4.3 ships no folder picker (spike conclusion). Forms/closes use the WPF-UI `ContentDialog` host when attached, else `MessageBox`.
+4. `IAppDialogService` (WPF-UI-backed `WpfUiDialogService`, null-stubbed `NullAppDialogService` headless): folder picking uses `Microsoft.Win32.OpenFolderDialog` (`PickFolderAsync`/`PickProjectFolderAsync`) - WPF-UI 4.3 ships no folder picker (spike conclusion); `PromptTextAsync` uses a modal `Window` with a `TextBox` because WPF-UI 4.3 has NO `TextBoxContentDialog`; confirm/alert use the WPF-UI `ContentDialog` host when attached, else `MessageBox`.
 
 ## Spike conclusions (recorded for maintainers)
 
@@ -50,6 +50,30 @@ The exact wiring is resolved against the shipped 4.3.0 API and verified by a hea
 - **MessageBox ambiguity**: with both `using System.Windows;` and `using Wpf.Ui.Controls;`, `MessageBox`/`MessageBoxButton`/`MessageBoxResult` are ambiguous - alias them to `System.Windows.*`.
 - **`NoWarn` scoping**: NU package-version warnings (`NU1900..NU1904`) are throttled in `UltimateWardrobe.App.csproj` only (`NoWarn` + `WarningsNotAsErrors`). The zero-warnings Release gate still holds for the whole solution. The App project also emits XAML/template warnings that are absorbed by the build.
 
+## Sprint 6.2 - project + overhaul management
+
+### Project picker (`ProjectListViewModel`, hosted by `ProjectPickerWindow`)
+
+- Recent projects from `RecentProjectsStore` (`settings.json`), top-8 newest-first with dedup; per-item remove through `RemoveRecentCommand`.
+- "New project" -> pick a folder (`PickProjectFolderAsync`) -> `ProjectStoreFactory.Open` -> creates `project.db`, saves a fresh `Project`, records recent, opens the session, raises `CloseRequested`.
+- "Open project" -> pick a folder -> loads the existing `project.db` through `IProjectStore.LoadAsync`; a missing `project.db` in Open mode alerts and does nothing.
+- A canceled folder dialog is a no-op. Every failure surfaces as an alert and leaves the session untouched.
+- NO "switch/close project" command exists in the picker or any view model (a reflection `CommandNameLeak` guard enforces it) - relaunch to change projects.
+
+### Overhaul cards (`ProjectViewModel`, `ProjectView`)
+
+- Cards are immutable snapshots derived from the session graph + `MappingService.GetOverhaulProgress`: name, `DoneFraction`, mapped/total counts (Mapped + Done), status label (No catalog - run a scan / Not started / In progress / Complete), plus the living `Overhaul` reference.
+- Add Vanilla: pick game root -> `IOverhaulSourceValidator.ValidateVanilla` (requires `Data\Skyrim.esm`) -> `VanillaCatalogSource`.
+- Add StoryMod: pick game root + mod root + prompt main plugin -> `ValidateStoryMod` (vanilla base + main plugin + masters beside it) -> `StoryModCatalogSource`.
+- Per-card Rename (reconstructs the immutable `Overhaul`, sets `ModifiedAt`) / Delete (confirmation -> removes from the graph -> autosave) / Select (navigates to `OverhaulView`).
+- Cards refresh on `Page.Loaded` (not `OnNavigatedTo` - not overridable on `Page`).
+
+### Persistence / autosave (amendment 3)
+
+`IProjectSession.Store` is the ONE `IProjectStore` bound to the opened `project.db`, opened once by the picker via `IProjectStoreFactory` and shared by every view model so autosave never races two stores on the same file. Every mutation (add/rename/delete overhaul) flushes through it.
+
+**Frozen Phases 1-5 constraint (documented limitation):** `ProjectStore.SaveAsync` is upsert-only - deleting an Overhaul removes it from the live graph and autosaves, but the real `Overhaul`/`Mapping` DB rows remain (no orphan/row GC). This is a Phase 4 limitation deliberately NOT touched here.
+
 ## Screen / navigation map (roadmap 8.2, minus a shell project list)
 
 ```
@@ -58,13 +82,13 @@ App.OnStartup
 
 MainWindow (FluentWindow)
   NavigationView pane
-    Project       - placeholder (Sprint 6.2/6.3: overhaul cards + donor library)
+    Project       - overhaul cards: name, progress, mapped/total, status + Add (Vanilla/StoryMod) + rename/delete/select (Sprint 6.2)
     Overhaul      - placeholder (Sprint 6.4/6.5: mapping matrix grid + popover)
     Export        - placeholder (Sprint 6.6: checklist + build + result)
   Status bar       busy spinner (IsBusy), latest ILogViewer line, Cancel, version in title
 ```
 
-The status bar is bound to `MainViewModel` (busy spinner visibility to `IsBusy`, live text to `StatusText` fed by `ILogViewer.LineAppended`, `CancelCommand`, version in `Title`). The `StatusBar`/version title and the picker's recent list are placeholders in this sprint; the deep screens arrive in Sprints 6.2-6.6.
+The status bar is bound to `MainViewModel` (busy spinner visibility to `IsBusy`, live text to `StatusText` fed by `ILogViewer.LineAppended`, `CancelCommand`, version in `Title`). The Overhaul and Export screens are placeholders until Sprint 6.4/6.6; the Project screen (overhaul cards) landed in Sprint 6.2.
 
 ## Settings layout
 
@@ -76,7 +100,6 @@ Repository-owned data lives under the user's Project root (`project.db`, `Source
 
 ## Screens still to come
 
-- Sprint 6.2 - `ProjectListViewModel` full picker flow (recent/new/open), `ProjectViewModel` overhaul cards + add/rename/delete, persistence wiring/autosave.
 - Sprint 6.3 - `DonorLibraryViewModel` table + drag-and-drop import drop zone.
 - Sprint 6.4 - `OverhaulViewModel` mapping matrix grid (FEMALE/MALE ARMOR section rows x weight columns, 2-D virtualization).
 - Sprint 6.5 - `ArmorSetDetailViewModel` anchored-popover cell editor.

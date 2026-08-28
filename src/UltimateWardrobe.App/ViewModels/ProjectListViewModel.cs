@@ -34,6 +34,7 @@ public sealed class ProjectListViewModel : ObservableObject
     private IAsyncRelayCommand? _newProjectCommand;
     private IAsyncRelayCommand? _openProjectCommand;
     private IAsyncRelayCommand? _openSelectedRecentCommand;
+    private IRelayCommand? _removeRecentCommand;
 
     public ProjectListViewModel(
         RecentProjectsStore recentStore,
@@ -54,7 +55,13 @@ public sealed class ProjectListViewModel : ObservableObject
     public RecentProjectItem? SelectedRecent
     {
         get => _selectedRecent;
-        set => SetProperty(ref _selectedRecent, value);
+        set
+        {
+            if (SetProperty(ref _selectedRecent, value))
+            {
+                RemoveRecentCommand.NotifyCanExecuteChanged();
+            }
+        }
     }
 
     public bool IsBusy
@@ -84,6 +91,9 @@ public sealed class ProjectListViewModel : ObservableObject
                     : OpenRootAsync(selected.Path, createIfMissing: false);
             });
 
+    public IRelayCommand RemoveRecentCommand =>
+        _removeRecentCommand ??= new RelayCommand(RemoveSelectedRecent, () => SelectedRecent is not null);
+
     public Task InitializeAsync()
     {
         RecentProjects.Clear();
@@ -103,6 +113,20 @@ public sealed class ProjectListViewModel : ObservableObject
             ? Path.GetFileName(databasePath)
             : Path.GetFileName(directory);
         return new RecentProjectItem(databasePath, name);
+    }
+
+    private void RemoveSelectedRecent()
+    {
+        var selected = SelectedRecent;
+        if (selected is null)
+        {
+            return;
+        }
+
+        _recentStore.RemoveRecentProject(selected.Path);
+        RecentProjects.Remove(selected);
+        SelectedRecent = RecentProjects.FirstOrDefault();
+        _logger.LogInformation("Removed '{Path}' from recent projects.", selected.Path);
     }
 
     private async Task PickAndOpenAsync(bool createIfMissing)
@@ -151,22 +175,21 @@ public sealed class ProjectListViewModel : ObservableObject
 
                 var name = Path.GetFileName(root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
                 var project = new Project(Guid.NewGuid(), name, root);
-                await store.SaveAsync(project);
+                _session.Open(project, databasePath, store);
+                await _session.Store!.SaveAsync(project);
 
-                _session.Open(project, databasePath);
                 _recentStore.AddRecentProject(databasePath);
                 _logger.LogInformation("Created project '{Name}' at '{Root}'.", project.Name, root);
             }
             else
             {
                 var project = await store.LoadAsync(databasePath);
-                _session.Open(project, databasePath);
+                _session.Open(project, databasePath, store);
                 _recentStore.AddRecentProject(databasePath);
                 _logger.LogInformation(
                     "Opened project '{Name}' (db '{Database}').",
                     project.Name,
                     databasePath);
-                ;
             }
 
             await InitializeAsync();
