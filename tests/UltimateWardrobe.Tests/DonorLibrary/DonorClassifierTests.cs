@@ -1,4 +1,5 @@
 using FluentAssertions;
+using UltimateWardrobe.Core.Domain;
 using UltimateWardrobe.Core.Enums;
 using UltimateWardrobe.DonorLibrary;
 using UltimateWardrobe.Tests.Scanner;
@@ -76,7 +77,7 @@ public class DonorClassifierTests : IDisposable
     }
 
     [Fact]
-    public async Task PluginFolder_Branch1_Skeleton_Is_Unknown()
+    public async Task PluginFolder_Branch1_Classifies_ProvidedSets()
     {
         var dir = GuidFolder();
         SyntheticSkyrimMods.WriteMain(dir);
@@ -84,8 +85,36 @@ public class DonorClassifierTests : IDisposable
         var donor = await _classifier.ClassifyAsync(dir);
 
         donor.Kind.Should().Be(DonorAssetKind.Unknown);
-        donor.ProvidedSets.Should().BeEmpty();
+        donor.ProvidedSets.Should().NotBeEmpty();
+        donor.ProvidedSets.Should().Contain(s => s.Id == "iron");
         donor.FileManifest.Should().Contain(e => e.RelativePath == SyntheticSkyrimMods.MainFileName);
+    }
+
+    [Fact]
+    public async Task PluginFolder_Reclassifies_Byte_Identically()
+    {
+        var dir = GuidFolder();
+        DonorModBuilder.WriteSelfContained(dir);
+
+        var first = await _classifier.ClassifyAsync(dir);
+        var second = await _classifier.ClassifyAsync(dir);
+
+        Shape(first).Should().Equal(Shape(second));
+        first.FileManifest.Should().Equal(second.FileManifest);
+    }
+
+    private static IReadOnlyList<object?> Shape(DonorAsset donor)
+    {
+        return donor.ProvidedSets
+            .Select(s => (object?)string.Join(
+                "|",
+                s.Id,
+                s.DisplayName,
+                string.Join(
+                    ";",
+                    s.Variants.Select(v => $"{v.Gender}:{v.Weight}:" +
+                        string.Join(",", v.Pieces.Select(p => $"{p.EditorId}|{p.Slot}|{p.MeshPath}|{string.Join("+", p.TexturePaths)}"))))))
+            .ToList();
     }
 
     [Fact]

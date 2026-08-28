@@ -87,11 +87,18 @@ Sources: `src/UltimateWardrobe.Core/Domain/Piece.cs:1`, `Variant.cs:1`, `ArmorSe
 
 ```csharp
 DonorLibrary(Guid projectId) { ProjectId, Assets }
-DonorProvidedSet(string id, string displayName)
-DonorAsset(Guid importId, string originalFileName, string extractedPath, DateTime importedAt, string archiveHash, DonorAssetKind kind, IReadOnlyList<DonorProvidedSet>? providedSets, IReadOnlyList<string>? fileManifest, IReadOnlyList<string>? detectedBodySlideFiles, IReadOnlyList<string>? detectedPhysicsFiles)
+DonorProvidedSet(string id, string displayName, IReadOnlyList<Variant>? variants = null)
+  { Id, DisplayName, Variants }   // Variants added in Sprint 2.0.2 (Scope amendment #2)
+DonorFileEntry(string relativePath, long length)
+  { RelativePath, Length }        // manifest entry, slash-normalized (Sprint 2.0.2, amendment #1)
+DonorAsset(Guid importId, string originalFileName, string extractedPath, DateTime importedAt, string archiveHash, DonorAssetKind kind = FullReplacer, IReadOnlyList<DonorProvidedSet>? providedSets = null, IReadOnlyList<DonorFileEntry>? fileManifest = null, IReadOnlyList<string>? detectedBodySlideFiles = null, IReadOnlyList<string>? detectedPhysicsFiles = null)
 ```
 
-Source: `src/UltimateWardrobe.Core/Domain/DonorLibrary.cs:1`, `DonorAsset.cs:1`
+- `DonorProvidedSet.Variants` reuses the catalog `Variant/Piece` shapes, so a donor-provided set is directly comparable with a catalog `ArmorSet` (roadmap 4.1); the 2-arg `(id, displayName)` ctor defaults it to empty
+- `DonorAsset.FileManifest` is `IReadOnlyList<DonorFileEntry>` (relative path + byte size) - Phase 5 file slicing needs sizes; `_meta.json` is excluded by the importer/classifier
+- `DonorAsset.ArchiveHash` must be non-empty; until Sprint 2.4 the classifier fills a documented `classification-pending` placeholder and the import service merges the real SHA-256
+
+Source: `src/UltimateWardrobe.Core/Domain/DonorLibrary.cs:1`, `DonorAsset.cs:1`, `DonorFileEntry.cs:1`
 
 ### PieceMapping
 
@@ -163,4 +170,4 @@ Reusable helpers for tests and later phases - no I/O:
 
 ## Next Phase
 
-- Sprint 0.2 - `UltimateWardrobe.Archives` implements `IArchiveExtractor` with P/Invoke over `runtimes/win-x64/native/7z.dll` and `UnRAR64.dll`
+- Sprint 2.0-2.1 - `UltimateWardrobe.DonorLibrary` implements `IDonorClassifier` with graduated classification (branch 1 - the Phase 1 pipeline over donor plugins with reference-master enrichment; branch 2 - mesh/texture heuristics, Sprint 2.2; branch 3 - BodySlide/physics/kind, Sprint 2.3). See `Docs/donor-library.md`.
