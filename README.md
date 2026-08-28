@@ -103,11 +103,12 @@ Standalone application for building full visual replacers for Skyrim SE armor an
   - Sprint 2.3 BodySlide/physics detection + Kind (branch 3) - done (`BodySlideDetector` SliderSets `*.osp` + SliderGroups `*.xml` + BodySlide-root `.xml`; `PhysicsDetector` hdtSMP/cbpc/physics tokens, `SKSE/Plugins` configs + `.tri` under detected mesh sets; `DonorKindDetector` FullReplacer/BodyConversionPatch/PhysicsPatch/Unknown with flags independent of Kind; branch 3 runs for every classification; 434 tests green)
   - Sprint 2.4 `DonorLibraryService` import flow - done (`DonorLibraryService` wired to the real archive extractor: `ImportAsync` extract -> classify -> merge identity -> guard -> append with failure cleanup, `RemoveAsync` deletes the extracted folder, `ReclassifyAsync` re-runs an existing folder with an optional reference-carrying `catalogHint`; cross-project guard rejects an archive owned by this or another library via `DonorAlreadyOwnedException`; 441 tests green)
   - Sprint 2.5 tests + goldens + real-donor integration + docs - done (four-archetype `SyntheticDonorUniverse` with fixed Guids; committed `tests/TestData/DonorGolden/*-donor.json` golden snapshots regenerated via `UW_WRITE_GOLDENS=1` and deep-equal-compared; `RealDonorIntegrationTests` Integration-gated with auto-skip + loose asserts + branch-2 esp-less gate - branch-2 fixture is genuinely esp-less (`Red Hood - HIMBO`), and the Execution Log records the real-donor probe findings incl. that 'EBONWRAITH/Gryphon Knight' carry no detectable physics; full suite 455 tests green, Release 0 warnings/0 errors)
-- Phase 3 - Manual Mapping + Physics / BodySlide: in progress
+- Phase 3 - Manual Mapping + Physics / BodySlide: done
   - Sprint 3.0 scaffolding + Core amendment + Mapping skeleton - done (`UltimateWardrobe.Mapping` project depending on `Core` only; Core amendment `PatchPolicy` enum (`Loose/RequireBodyConversion/RequirePhysics/RequireBoth`) + `Overhaul.Policy` init-default `Loose` (roadmap 5.3 target-body / patch demand); `MappingService` skeleton with the full API surface (`AssignDonor`/`AttachPatch`/`Unassign`/`DetachPatch`/`GetStatus`/`GetArmorSetStatus`/`GetOverhaulProgress`), `OverhaulProgress` DTO, `PatchKind`, and the empty/unmapped progress path implemented + tested (`Done` is a caller-side overlay, never a fifth derived status); `SyntheticCatalogUniverse` Iron set (Male + Female Heavy) + `MappingFixtures` (`CreateOverhaulWithCatalog`/`CreateDonorOutput`); full suite 460 tests green, Release 0 warnings/0 errors)
   - Sprint 3.1 `MappingService` CRUD + validation - done (`AssignDonor`/`AttachPatch`/`Unassign`/`DetachPatch` end-to-end on in-memory data; `UniqueKey` uniqueness (second assign replaces, never duplicates); `ValidateCrossProject` on every write (donor or patch from another project rejected with no partial state); patch-`Kind` checks (patch as main donor rejected, full-replacer/physics-as-body rejected); stale-instance safety in attach/detach (rebuild from the in-list mapping by Id); per-gender mapping with two donors; full suite 473 tests green, Release 0 warnings/0 errors)
   - Sprint 3.2 patch requirement detection + recommendation - done (`NeedFor` + `PatchRequirement` (`None/Body/Physics/Both`) over the COMBINED main-donor-OR-attached-patch Phase 2 flags + `Overhaul.Policy` - `Loose` no-demand, `RequireBodyConversion` demands body when the donor set has a body piece without a BodySlide flag or `BodyMarkerFromPath` marker, `RequirePhysics` demands physics when no physics flag; `GetStatus` -> `Pending` (unmapped)/`Mapped`/`NeedsPatch`; `BodyMarkerFromPath` body-token table (`3ba/3baf`->ThreeBA, `cbbe`->CBBE, `bhunp`->BHUNP, `himbo`->HIMBO, `unp/unpb`->BHUNP); `RecommendPatches` matching-`Kind` candidates sorted deterministically (`BodyConversionPatch` then `PhysicsPatch`, then `ImportId`); full suite 485 tests green, Release 0 warnings/0 errors)
   - Sprint 3.3 set status + Overhaul progress - done (`GetArmorSetStatus` per-set/per-gender `NotStarted/InProgress/Mapped/NeedsPatch` via target `PieceMapping`s - never `Done`, no done-override param; `SetDone` is the ONLY `Done` overlay toggle (records done only when the set is `Mapped`); `GetOverhaulProgress` counts a set `Done` exactly when `Mapped AND doneOverride`, with `DoneFraction` + `Remaining`; the five progress buckets are mutually exclusive and always sum to the total - recorded fix: the plan's four-bucket sum phrasing omitted the `Mapped` bucket; full suite 492 tests green, Release 0 warnings/0 errors)
+  - Sprint 3.4 tests + real-donor spot-check + docs - done (consolidated mapping suite: `MappingServiceSkeletonTests` 3 + `MappingServiceCrudTests` 13 + `PatchDetectionTests` 12 + `SetStatusProgressTests` 7 + `MappingDeterminismTests` 2 - the same assign sequence over the same synthetic catalog/donor set yields identical statuses + progress every run regardless of freshly generated GUIDs; `RealDonorPatchDetectionIntegrationTests` (`[Trait("Category","Integration")]`, auto-skips without `ModsForTests/Armor`, cleans `%TEMP%/UW_Donor_Map_*`) classifies the real `Red Hood - HIMBO` (`BodyConversionPatch`, 2 BodySlide + 10 physics flags) and asserts a piece mapped to it reads `PatchRequirement.None` under `RequireBodyConversion`/`RequirePhysics` and `MappingStatus.Mapped` under `RequireBoth`, proving `NeedsPatch` reacts to the real classifier flags; full suite 495 tests green (481 non-integration + 14 Integration), Release 0 warnings/0 errors, no artifacts left)
 
 ## Stack
 
@@ -115,7 +116,7 @@ Standalone application for building full visual replacers for Skyrim SE armor an
 - WPF (MVVM, CommunityToolkit.Mvvm) - from Phase 6
 - Mutagen.Bethesda.Skyrim 0.54.4 - Phase 1 (Scanner): catalog scanning via Mutagen 0.54 - folder-only, masters-first order, ARMO -> ARMA -> files correlation, Outfit/EDID-mesh ArmorSet grouping, gender/weight variant assembly, catalog cache
 - Mutagen.Bethesda.Skyrim 0.54.4 + M.E.Logging.Abstractions - Phase 2 (DonorLibrary): donor plugin probe + branch-1 classification over donor ARMO with reference-master enrichment, branch-2 mesh/texture heuristics for esp-less donors, branch-3 BodySlide/physics detection + `DonorAssetKind`, deterministic `ProvidedSets` in catalog shapes
-- Phase 3 (Mapping) uses `Core` only (no package deps): manual mapping + patch detection + status/progress over the existing `PieceMapping`/`ArmorSetStatus`/`PatchPolicy` domain
+- Phase 3 (Mapping) uses `Core` only (no package deps): manual mapping + patch detection + status/progress over the existing `PieceMapping`/`ArmorSetStatus`/`PatchPolicy` domain (Phase 3 done)
 - SQLite + Microsoft.Data.Sqlite - from Phase 4
 - Archives extracted natively via `7z.dll` (7z/zip) + `UnRAR64.dll` (rar), SharpCompress fallback - Phase 0.2
 
@@ -127,7 +128,7 @@ UltimateWardrobe.slnx
 ├── src/UltimateWardrobe.Archives    # Archive extraction (native first)
 ├── src/UltimateWardrobe.Scanner     # Mutagen folder catalog scanner (Phase 1)
 ├── src/UltimateWardrobe.DonorLibrary# Donor import + classification (Phase 2, Sprints 2.0-2.5 done)
-├── src/UltimateWardrobe.Mapping     # Manual mapping + patch detection + status/progress (Phase 3, Sprints 3.0-3.3 done)
+├── src/UltimateWardrobe.Mapping     # Manual mapping + patch detection + status/progress (Phase 3, Sprints 3.0-3.4 done)
 └── tests/UltimateWardrobe.Tests     # xUnit + FluentAssertions
 ```
 
@@ -144,13 +145,13 @@ dotnet test
 ## Docs
 
 - `Plans/final-roadmap.md` - full roadmap (Phases 0-7)
-- `Plans/phase0.md`, `Plans/phase1.md`, `Plans/phase2.md`, `Plans/phase3.md` - implementation plans (phase 1, 2 done; phase 3 in progress)
+- `Plans/phase0.md`, `Plans/phase1.md`, `Plans/phase2.md`, `Plans/phase3.md` - implementation plans (phase 1, 2, 3 done)
 - `Docs/architecture.md` - architecture overview
 - `Docs/domain-model.md` - domain model (Sprint 0.1 - done)
 - `Docs/archive-layer.md` - archive layer (Sprint 0.2 - done)
 - `Docs/scanner.md` - folder catalog scanner, grouping + gender/weight variants, catalog + cache, logging/report, committed goldens + integration gates (Sprint 1.7 - done)
 - `Docs/donor-library.md` - donor import + graduated classification, plugin probe, branch-1 pipeline + reference-master merge, branch-2 mesh/texture heuristics, branch-3 BodySlide/physics + kind, `DonorLibraryService` import/remove/reclassify + cross-project guard, and the Sprint 2.5 test suite (synthetic goldens + real-donor integration) (Phase 2, Sprints 2.0-2.5 - done)
-- `Docs/mapping.md` - manual mapping + patch detection + status/progress + `PatchPolicy` amendment (Phase 3, Sprints 3.0-3.3 - done, 3.4 pending)
+- `Docs/mapping.md` - manual mapping + patch detection + status/progress + determinism + real-donor spot-check (Phase 3, Sprints 3.0-3.4 - done)
 
 ## Test Assets
 
