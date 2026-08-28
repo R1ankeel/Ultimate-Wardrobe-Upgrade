@@ -1,6 +1,6 @@
 # Donor Library: Import + Classification
 
-> Phase 2, Sprints 2.0-2.1 done - `src/UltimateWardrobe.DonorLibrary` - graduated classification for extracted donor folders: branch 1 runs the Phase 1 scanner pipeline over donor plugins (optionally enriched with reference game esms), branch 2 falls back to mesh/texture heuristics (lands in Sprint 2.2), branch 3 adds BodySlide/physics detection and `DonorAssetKind` (lands in Sprint 2.3).
+> Phase 2, Sprints 2.0-2.2 done - `src/UltimateWardrobe.DonorLibrary` - graduated classification for extracted donor folders: branch 1 runs the Phase 1 scanner pipeline over donor plugins (optionally enriched with reference game esms), branch 2 classifies mesh/texture replacers from paths alone, branch 3 adds BodySlide/physics detection and `DonorAssetKind` (lands in Sprint 2.3).
 
 ## Overview
 
@@ -27,8 +27,9 @@ User drops an archive
 | `DonorPluginProbe.cs:1` | Plugin discovery inside the extracted folder: candidates, frozen main-plugin rule, masters (2.0.5) |
 | `DonorScanPipeline.cs:1` | Branch 1: reference + donor load list, donor-only ARMO filter, correlate -> group -> assemble -> `DonorProvidedSet`s (2.1.2) |
 | `ReferenceMasterMerger.cs:1` | Reference game esms merged into the load set for index-only resolution, deduped against the donor set (2.1.1) |
-| `MeshPathIndexer.cs` | Branch 2: `meshes/**/*.nif` + `textures/**/*.dds` folder grouping (Sprint 2.2, not yet present) |
-| `DonorNameHeuristics.cs` | Gender/weight/piece tokens from paths and stems (Sprint 2.2, not yet present) |
+| `MeshPathIndexer.cs` | Branch 2: `meshes/**/*.nif` + `textures/**/*.dds` folder grouping (Sprint 2.2) |
+| `DonorNameHeuristics.cs` | Gender/weight/piece tokens from paths and stems (Sprint 2.2) |
+| `MeshSetAssembler.cs` | Branch 2: ProvidedSets from mesh groups with texture linkage (Sprint 2.2) |
 | `BodySlideDetector.cs` | `CalienteTools/BodySlide` globbing (Sprint 2.3, not yet present) |
 | `PhysicsDetector.cs` | hdt/cbpc/physics/tri globbing (Sprint 2.3, not yet present) |
 | `DonorKindDetector.cs` | `FullReplacer | BodyConversionPatch | PhysicsPatch | Unknown` (Sprint 2.3, not yet present) |
@@ -78,7 +79,7 @@ Branch 1 with zero sets means "the donor esp carries no groupable armor (no ARMO
 
 ### Classifier skeleton (2.0.4)
 
-Implements `IDonorClassifier`; validates `extractedDir` (friendly `DirectoryNotFoundException`); routes on `probe.Main`; branch 2 stub returns empty until 2.2; `Kind = Unknown`, empty flags. Mutagen note: `ModKey.FileName` is a `FilePath`, not a `string` - ordering uses `.Name` and the extension rank uses `.ToString()`.
+Implements `IDonorClassifier`; validates `extractedDir` (friendly `DirectoryNotFoundException`); routes on `probe.Main`; branch 2 (Sprint 2.2) runs the mesh/texture heuristics; `Kind = Unknown`, empty flags until Sprint 2.3. Mutagen note: `ModKey.FileName` is a `FilePath`, not a `string` - ordering uses `.Name` and the extension rank uses `.ToString()`.
 
 ## Sprint 2.1 - classify via plugin + reference-master merge
 
@@ -110,6 +111,33 @@ Loaded `LoadedMod` overlays (reference + donor) are disposed in a `finally`. Cor
 
 A donor plugin that yields zero sets (or the reference-dependent case without a hint) falls through to branch 2 with a logged reason, mirroring the risk table of `Plans/phase2.md` `## 7`.
 
+## Sprint 2.2 - branch 2: mesh/texture heuristics
+
+Branch 2 classifies folders without a usable plugin - mesh-only replacers and fall-throughs (2.1.4). It runs purely on file paths (no Mutagen), so synthetic unit trees are just plain files.
+
+### MeshPathIndexer (2.2.1)
+
+Recursive `meshes/**/*.nif` and `textures/**/*.dds` globbing over BOTH the extracted root and the `Data/` layout for each; normalized to game-relative forward-slash paths that keep the `meshes/`/`textures/` stem and drop any `Data/` prefix (the branch-1 `FileResolver` convention). Identical game-relative paths are deduped; output is ordinal. A missing folder yields empty (no exception).
+
+### DonorNameHeuristics (2.2.2)
+
+Pure static functions over mesh/texture stems and relative paths.
+
+- `BaseStem` - strips trailing `_0`/`_1`/`_1st` (repeated, case-insensitive) so the three BodySlide weight-variant files collapse to one EditorId; fully-marker stems become empty (degenerate, skipped).
+- `PrimaryRank` - `_1`(0) > `_0`(1) > `_1st`(2) > plain base (3) > anything else (4) - picks the primary file of a group.
+- `PieceTypeFromStem` - matches the frozen `PieceTypeDetector.EquipmentWords` case-insensitively after stripping trailing gender/weight markers (`cuirass_f` -> `Cuirass`), or null -> `Other`. Lowercase real mesh stems are matched the same way as CamelCase ARMO EditorIDs.
+- `GenderFrom` - resolution order: explicit stem markers (`_f`/`_female`/`_m`/`-male` via `ExplicitFromEditorId`), then `female`/`male` path segments (via `ExplicitFromMeshPath`), then single-char `f`/`m` path segments (documented extension for chaotic real replacer layouts), else null -> Unisex.
+- `WeightFromPath` - a path segment CONTAINING `heavy`, then `light`, then `clothes` (substring semantics handles `heavyiron`, `lightleather`, `cuirass_clothes.nif`), else `WeightClass.Any`. Priority heavy > light > clothes.
+
+### MeshSetAssembler + texture linkage (2.2.3 / 2.2.4)
+
+- Meshes group via `KeyNormalizer.NormalizeMeshFolder` (folder-key grouping; same-named `cuirass.nif` under `f/` and `m/` become distinct pieces because the piece key is `directory | baseStem`).
+- One primary file per group by `PrimaryRank`, ties broken ordinal by mesh path; alternates (`_0`/`_1`/`_1st`) stay in the manifest only.
+- Derived: gender/weight from the stem + game-relative path; EditorId = baseStem (keeps gender markers), `FormId = 0`, Slot = piece word.
+- A `Variant` per distinct `(gender, weight)` ordered by enum; pieces ordered by slot.
+- Textures: indexed per set, each texture stem mapped through the piece-word table, deduped + ordinal, attached to the piece with the matching slot - the mirror of the branch-1 TXST correlation output.
+- Empty mesh index: early return, no sets, no crash - so texture-only replacers classify as `Unknown` until Sprint 2.3.
+
 ## Determinism
 
 - Probe ordering, reference merge ordering, ARMO ordering (`ModKey.Name` ordinal, then `FormKey.ID`), and manifest ordering (ordinal by relative path) are all stable.
@@ -126,8 +154,9 @@ A donor plugin that yields zero sets (or the reference-dependent case without a 
 - `tests/UltimateWardrobe.Tests/DonorLibrary/DonorModBuilder.cs` - runtime builders via the Mutagen writer: self-contained esp (`DonorKit.esp`), bundled master pair (`BundledBase.esm` + `BundledKit.esp`), reference base (`RefBase.esm`) + reference-dependent esp (`DonorRef.esp`), empty esp, esm/esl writers.
 - Sprint 2.0: 18 new tests (2 Core amendments + 10 `DonorPluginProbeTests` + 6 `DonorClassifierTests`) - empty folder -> `Unknown` with 0 sets and a manifest, missing-folder throw, loose-files (no plugins) -> manifest sizes, probe determinism, master chain, corrupt-plugin-as-candidate, layout variants.
 - Sprint 2.1: 16 new tests (6 `DonorReferenceMasterMergerTests` + 9 `DonorScanPipelineTests` + 1 classifier-net) - self-contained donor classifies into the expected set with Male + Female Heavy variants and manifest coverage; keyword record inside a bundled fake master resolves; plugin with 0 ARMO falls through to branch 2; reference resolves a keyword without leaking reference armors; reference-dependent donor without a hint falls through; donor-bundled copy wins over a same-named reference; corrupt donor warns and falls through; corrupt reference warns and is skipped; pipeline reports donor/reference counts.
-- Full suite 362/362 green (was 346, +16), Release 0 warnings/0 errors, no temp `UW_Donor_*` dirs, no `TestResults/`.
+- Sprint 2.2: 45 new tests (`MeshPathIndexerTests` 7, `DonorNameHeuristicsTests` 30, `DonorMeshAssemblerTests` 8) - indexer layout globbing/dedupe/empty; heuristics unit cases incl. gender precedence and weight substring+priority; branch-2 end-to-end: iron male/female kit family + texture linkage + slot order + `FormId 0`, clothes path from a `Data/` layout, unhelpful `meshes/zzzztexture` folder falls back to the `zzzztexture` key with an `Other` piece, LOD/_1st one-piece-with-preferred-path while alternates stay manifest-only, texture-only folder yields no sets without crashing, heavy-token weight class, mesh-only determinism (projected shape + manifest equality), and esp-fall-through classifies via branch 2. Helper `DonorMeshTreeBuilder` writes runtime files - no Mutagen for branch 2. The pre-2.2 `LooseFiles_NoPlugins_...` test (written when branch 2 did not exist) now asserts the `iron` set while keeping its manifest-size focus.
+- Full suite 407/407 green (was 362, +45), Release 0 warnings/0 errors, no temp `UW_Donor_*` dirs, no `TestResults/`.
 
 ## Status
 
-Sprints 2.0-2.1 are complete: import-time manifest, plugin probe, branch-1 classification with optional reference enrichment, and deterministic classification for esp-carrying donors. Branch 2 (mesh/texture heuristics), branch 3 (BodySlide/physics/kind), the `DonorLibraryService` import flow, golden snapshots, real-donor integration tests, and the final docs pass land in Sprints 2.2-2.5.
+Sprints 2.0-2.2 are complete: import-time manifest, plugin probe, branch-1 classification with optional reference enrichment, branch-2 mesh/texture heuristics (esp-less donors produce real `ProvidedSets`), and deterministic classification for all folder shapes. Branch 3 (BodySlide/physics/kind), the `DonorLibraryService` import flow, golden snapshots, real-donor integration tests, and the final docs pass land in Sprints 2.3-2.5.

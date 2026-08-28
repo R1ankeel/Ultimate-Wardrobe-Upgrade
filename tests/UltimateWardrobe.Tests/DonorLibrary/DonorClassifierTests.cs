@@ -68,7 +68,7 @@ public class DonorClassifierTests : IDisposable
         var donor = await _classifier.ClassifyAsync(dir);
 
         donor.Kind.Should().Be(DonorAssetKind.Unknown);
-        donor.ProvidedSets.Should().BeEmpty();
+        donor.ProvidedSets.Should().ContainSingle().Which.Id.Should().Be("iron");
         donor.FileManifest.Should().HaveCount(2);
         donor.FileManifest.Should().NotContain(e => e.RelativePath == "_meta.json");
         donor.FileManifest.Should().OnlyContain(e => e.Length > 0);

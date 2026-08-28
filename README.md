@@ -99,14 +99,15 @@ Standalone application for building full visual replacers for Skyrim SE armor an
 - Phase 2 - Donor Library - import + classification: in progress
   - Sprint 2.0 scaffolding + Core amendments + classification skeleton - done (`UltimateWardrobe.DonorLibrary` project; Core amendments `DonorFileEntry` + `FileManifest` entries with sizes + `DonorProvidedSet.Variants`; `DonorImportService` size-emitting manifest; `DonorPluginProbe` with the frozen main-plugin rule; `DonorClassifier` skeleton routing branches + `Unknown` kind; 346 tests green)
   - Sprint 2.1 classify via plugin + reference-master merge - done (`ReferenceMasterMerger` merging reference game esms into the load set without leaking reference armor; `DonorScanPipeline` donor-only ARMO -> correlate -> group -> assemble -> `ProvidedSets`; fall-through to branch 2 when branch 1 yields 0 sets; corrupt plugins warn + skip; 362 tests green)
-  - Sprint 2.2 mesh/texture heuristics (branch 2), 2.3 BodySlide/physics/kind (branch 3), 2.4 `DonorLibraryService` import flow, 2.5 tests + goldens + real-donor integration + docs - pending
+  - Sprint 2.2 mesh/texture heuristics (branch 2) - done (`MeshPathIndexer` recursive `meshes/**/*.nif` + `textures/**/*.dds` globbing over root + `Data/` layouts; `DonorNameHeuristics` piece/gender/weight from stems + paths with `_0/_1/_1st` normalization and `_1 > _0 > _1st` primary-file preference; `MeshSetAssembler` ProvidedSets from mesh groups with TXST-like texture linkage - esp-less donors now classify; 407 tests green)
+  - Sprint 2.3 BodySlide/physics/kind (branch 3), 2.4 `DonorLibraryService` import flow, 2.5 tests + goldens + real-donor integration + docs - pending
 
 ## Stack
 
 - .NET 10 LTS (`net10.0-windows`), C# 13
 - WPF (MVVM, CommunityToolkit.Mvvm) - from Phase 6
 - Mutagen.Bethesda.Skyrim 0.54.4 - Phase 1 (Scanner): catalog scanning via Mutagen 0.54 - folder-only, masters-first order, ARMO -> ARMA -> files correlation, Outfit/EDID-mesh ArmorSet grouping, gender/weight variant assembly, catalog cache
-- Mutagen.Bethesda.Skyrim 0.54.4 + M.E.Logging.Abstractions - Phase 2 (DonorLibrary): donor plugin probe + branch-1 classification over donor ARMO with reference-master enrichment, deterministic `ProvidedSets` in catalog shapes
+- Mutagen.Bethesda.Skyrim 0.54.4 + M.E.Logging.Abstractions - Phase 2 (DonorLibrary): donor plugin probe + branch-1 classification over donor ARMO with reference-master enrichment + branch-2 mesh/texture heuristics for esp-less donors, deterministic `ProvidedSets` in catalog shapes
 - SQLite + Microsoft.Data.Sqlite - from Phase 4
 - Archives extracted natively via `7z.dll` (7z/zip) + `UnRAR64.dll` (rar), SharpCompress fallback - Phase 0.2
 
@@ -117,7 +118,7 @@ UltimateWardrobe.slnx
 ├── src/UltimateWardrobe.Core        # Domain model, no I/O
 ├── src/UltimateWardrobe.Archives    # Archive extraction (native first)
 ├── src/UltimateWardrobe.Scanner     # Mutagen folder catalog scanner (Phase 1)
-├── src/UltimateWardrobe.DonorLibrary# Donor import + classification (Phase 2, Sprints 2.0-2.1)
+├── src/UltimateWardrobe.DonorLibrary# Donor import + classification (Phase 2, Sprints 2.0-2.2)
 └── tests/UltimateWardrobe.Tests     # xUnit + FluentAssertions
 ```
 
@@ -139,7 +140,7 @@ dotnet test
 - `Docs/domain-model.md` - domain model (Sprint 0.1 - done)
 - `Docs/archive-layer.md` - archive layer (Sprint 0.2 - done)
 - `Docs/scanner.md` - folder catalog scanner, grouping + gender/weight variants, catalog + cache, logging/report, committed goldens + integration gates (Sprint 1.7 - done)
-- `Docs/donor-library.md` - donor import + graduated classification, plugin probe, branch-1 pipeline + reference-master merge (Phase 2, Sprints 2.0-2.1 - done)
+- `Docs/donor-library.md` - donor import + graduated classification, plugin probe, branch-1 pipeline + reference-master merge, branch-2 mesh/texture heuristics (Phase 2, Sprints 2.0-2.2 - done)
 
 ## Test Assets
 

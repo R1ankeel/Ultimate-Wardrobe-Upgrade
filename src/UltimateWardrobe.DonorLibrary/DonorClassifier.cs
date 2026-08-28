@@ -9,10 +9,11 @@ namespace UltimateWardrobe.DonorLibrary;
 /// <summary>
 /// Graduated donor classifier: probes the extracted folder for plugins, routes to branch 1
 /// (plugin pipeline through <see cref="DonorScanPipeline"/>, Sprint 2.1) or branch 2 (mesh
-/// heuristics, Sprint 2.2), and fills the <see cref="DonorAsset.FileManifest"/> from the folder.
-/// Branch 1 with zero <see cref="DonorProvidedSet"/>s (missing masters, or a plugin with no
-/// groupable armor) falls through to branch 2 with a logged reason (2.1.4). Branch 3 detectors
-/// and <see cref="DonorAssetKind"/> land in Sprint 2.3; until then the kind stays honest -
+/// heuristics via <see cref="MeshPathIndexer"/> + <see cref="MeshSetAssembler"/>, Sprint 2.2),
+/// and fills the <see cref="DonorAsset.FileManifest"/> from the folder. Branch 1 with zero
+/// <see cref="DonorProvidedSet"/>s (missing masters, or a plugin with no groupable armor) falls
+/// through to branch 2 with a logged reason (2.1.4). Branch 3 detectors and
+/// <see cref="DonorAssetKind"/> land in Sprint 2.3; until then the kind stays honest -
 /// <see cref="DonorAssetKind.Unknown"/>, empty flag lists. The asset's archive identity (real
 /// hash, file name, timestamps) is merged by <see cref="DonorLibraryService"/> in Sprint 2.4 -
 /// the classifier itself only fabricates a documented placeholder for the archive hash.
@@ -24,17 +25,20 @@ public sealed class DonorClassifier : IDonorClassifier
     private readonly DonorPluginProbe _probe;
     private readonly DonorScanPipeline _pipeline;
     private readonly ReferenceMasterMerger _merger;
+    private readonly MeshPathIndexer _indexer;
     private readonly ILogger<DonorClassifier> _logger;
 
     public DonorClassifier(
         DonorPluginProbe? probe = null,
         DonorScanPipeline? pipeline = null,
         ReferenceMasterMerger? merger = null,
+        MeshPathIndexer? indexer = null,
         ILogger<DonorClassifier>? logger = null)
     {
         _probe = probe ?? new DonorPluginProbe();
         _pipeline = pipeline ?? new DonorScanPipeline();
         _merger = merger ?? new ReferenceMasterMerger();
+        _indexer = indexer ?? new MeshPathIndexer();
         _logger = logger ?? NullLogger<DonorClassifier>.Instance;
     }
 
@@ -172,9 +176,26 @@ public sealed class DonorClassifier : IDonorClassifier
         DonorPluginProbeResult probe,
         List<ScanWarning> warnings)
     {
-        _logger.LogDebug(
-            "Classification {Folder}: branch 2 (mesh heuristics) lands in Sprint 2.2; returning no ProvidedSets",
-            Path.GetFileName(Path.TrimEndingDirectorySeparator(extractedDir)));
-        return Array.Empty<DonorProvidedSet>();
+        var folderName = Path.GetFileName(Path.TrimEndingDirectorySeparator(extractedDir));
+
+        var meshPaths = _indexer.IndexMeshes(extractedDir);
+        if (meshPaths.Count == 0)
+        {
+            _logger.LogDebug(
+                "Classification {Folder}: branch 2 (mesh heuristics) found no meshes/**/*.nif; returning no ProvidedSets",
+                folderName);
+            return Array.Empty<DonorProvidedSet>();
+        }
+
+        var texturePaths = _indexer.IndexTextures(extractedDir);
+        var sets = MeshSetAssembler.Assemble(meshPaths, texturePaths, warnings);
+
+        _logger.LogInformation(
+            "Classification {Folder}: branch 2 (mesh heuristics) produced {SetCount} ProvidedSets from {MeshCount} meshes",
+            folderName,
+            sets.Count,
+            meshPaths.Count);
+
+        return sets;
     }
 }
