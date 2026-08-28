@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Media;
 using UltimateWardrobe.App.ViewModels;
 using Wpf.Ui.Abstractions;
 using Wpf.Ui.Controls;
@@ -29,7 +30,25 @@ public partial class MainWindow : FluentWindow
         _pageProvider = pageProvider ?? throw new ArgumentNullException(nameof(pageProvider));
         DataContext = viewModel;
         InitializeComponent();
+        ApplyAppIcon();
         Loaded += OnLoaded;
+    }
+
+    /// <summary>
+    /// Sets the app icon from the app-scope resource (Sprint 6.6 polish, roadmap 8.5). Done from
+    /// code, not via a <c>{StaticResource AppIcon}</c> XAML attribute: a StaticResource on the root
+    /// element can only see resources declared before that point, so it could never resolve the
+    /// window's own siblings - and a parse-time failure there crashed the shell right after the
+    /// picker created the project. Lookup is null-safe so the shell still builds without an
+    /// <see cref="Application"/> (headless STA boot check).
+    /// </summary>
+    private void ApplyAppIcon()
+    {
+        var icon = Application.Current?.TryFindResource("AppIcon") as ImageSource;
+        if (icon is not null)
+        {
+            Icon = icon;
+        }
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)

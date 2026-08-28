@@ -10,6 +10,37 @@
         <ui:ThemesDictionary Theme="Dark" />
         <ui:ControlsDictionary />
       </ResourceDictionary.MergedDictionaries>
+      <!-- App icon (Sprint 6.6 polish, roadmap 8.5): a simple wardrobe-door vector, resident at
+           app scope. MainWindow's code-behind copies it with a null-safe TryFindResource, so the
+           shell never depends on a parse-time StaticResource that could not resolve during XAML
+           load (the resource has to exist before the referencing point). -->
+      <DrawingImage x:Key="AppIcon">
+        <DrawingImage.Drawing>
+          <DrawingGroup>
+            <GeometryDrawing Brush="#FF3D5C7A">
+              <GeometryDrawing.Geometry>
+                <RectangleGeometry Rect="0,0,16,16" RadiusX="1.5" RadiusY="1.5" />
+              </GeometryDrawing.Geometry>
+            </GeometryDrawing>
+            <GeometryDrawing Brush="#FFFFFFFF">
+              <GeometryDrawing.Geometry>
+                <GeometryGroup>
+                  <RectangleGeometry Rect="3,2,1.5,12" RadiusX="0.6" RadiusY="0.6" />
+                  <RectangleGeometry Rect="11.5,2,1.5,12" RadiusX="0.6" RadiusY="0.6" />
+                </GeometryGroup>
+              </GeometryDrawing.Geometry>
+            </GeometryDrawing>
+            <GeometryDrawing Brush="#FFE2BE5A">
+              <GeometryDrawing.Geometry>
+                <GeometryGroup>
+                  <RectangleGeometry Rect="2,7.4,0.8,1.2" RadiusX="0.3" RadiusY="0.3" />
+                  <RectangleGeometry Rect="13.2,7.4,0.8,1.2" RadiusX="0.3" RadiusY="0.3" />
+                </GeometryGroup>
+              </GeometryDrawing.Geometry>
+            </GeometryDrawing>
+          </DrawingGroup>
+        </DrawingImage.Drawing>
+      </DrawingImage>
     </ResourceDictionary>
   </Application.Resources>
 
