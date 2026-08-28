@@ -10,6 +10,13 @@ public sealed record DiscoveredPlugin
     public required ModKey ModKey { get; init; }
 
     public bool IsMainPlugin { get; init; }
+
+    /// <summary>
+    /// True for plugins that are LINKED into the load order for master/FormLink resolution only -
+    /// their ARMO/ARMA records are never scanned as catalog content (Sprint 6.9: the vanilla
+    /// <c>Update.esm</c> resolution-only baseline). Explicitly requested plugins are never marked.
+    /// </summary>
+    public bool IsResolutionOnly { get; init; }
 }
 
 public sealed record DiscoveryResult
@@ -24,6 +31,27 @@ public sealed record DiscoveryResult
 public sealed class PluginDiscovery
 {
     private static readonly string[] VanillaPatterns = { "*.esm", "*.esl" };
+
+    /// <summary>
+    /// The ONLY content plugins a Vanilla source scans when no explicit
+    /// <see cref="VanillaCatalogSource.PluginNames"/> are requested (Sprint 6.9, T1):
+    /// Skyrim.esm + the three official DLC masters. Any other esm/esl in the game Data
+    /// folder (Creation Club content, _ResourcePack.esl, mod masters) is never scanned.
+    /// </summary>
+    private static readonly string[] VanillaOfficialMasters =
+    {
+        "Skyrim.esm",
+        "Dawnguard.esm",
+        "HearthFires.esm",
+        "Dragonborn.esm",
+    };
+
+    /// <summary>
+    /// The resolution-only vanilla baseline (Sprint 6.9, T2 of the fix): <c>Update.esm</c> is declared
+    /// as a master by all three official DLC masters, so it is linked into the load order (no
+    /// "missing master" warnings, DLC FormLinks stay resolvable) but is NEVER scanned for armor.
+    /// </summary>
+    private const string VanillaResolutionOnlyBaseline = "Update.esm";
 
     public DiscoveryResult Discover(CatalogSource source, List<ScanWarning> warnings)
     {
@@ -47,6 +75,7 @@ public sealed class PluginDiscovery
 
         if (pluginNames.Count == 0)
         {
+            var official = new HashSet<string>(VanillaOfficialMasters, StringComparer.OrdinalIgnoreCase);
             foreach (var pattern in VanillaPatterns)
             {
                 foreach (var file in EnumeratePluginFiles(dataPath, pattern))
@@ -57,7 +86,25 @@ public sealed class PluginDiscovery
                         continue;
                     }
 
-                    plugins.Add(new DiscoveredPlugin { AbsolutePath = file, ModKey = modKey });
+                    if (official.Contains(modKey.FileName.ToString()))
+                    {
+                        plugins.Add(new DiscoveredPlugin { AbsolutePath = file, ModKey = modKey });
+                        continue;
+                    }
+
+                    if (modKey.FileName.ToString().Equals(VanillaResolutionOnlyBaseline, StringComparison.OrdinalIgnoreCase))
+                    {
+                        plugins.Add(new DiscoveredPlugin { AbsolutePath = file, ModKey = modKey, IsResolutionOnly = true });
+                    }
+                }
+            }
+
+            foreach (var master in VanillaOfficialMasters)
+            {
+                if (!plugins.Any(p => p.ModKey.FileName.ToString().Equals(master, StringComparison.OrdinalIgnoreCase)))
+                {
+                    warnings.Add(new ScanWarning(
+                        $"Official master '{master}' was not found under '{dataPath}'; it will not be scanned."));
                 }
             }
         }

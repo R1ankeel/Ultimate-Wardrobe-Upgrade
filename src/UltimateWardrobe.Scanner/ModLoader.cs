@@ -12,6 +12,12 @@ public sealed class LoadedMod : IDisposable
 
     public required ISkyrimModDisposableGetter Overlay { get; init; }
 
+    /// <summary>
+    /// True when the mod is linked for master/FormLink resolution only and its ARMO/ARMA
+    /// records must not become catalog content (Sprint 6.9 vanilla <c>Update.esm</c>).
+    /// </summary>
+    public bool IsResolutionOnly { get; init; }
+
     public void Dispose() => Overlay.Dispose();
 }
 
@@ -30,7 +36,17 @@ public sealed class ModLoader
         return overlay.MasterReferences.Select(m => m.Master).ToList();
     }
 
+    public LoadedMod? TryLoad(DiscoveredPlugin plugin, List<ScanWarning> warnings)
+    {
+        return TryLoad(plugin.AbsolutePath, plugin.IsResolutionOnly, warnings);
+    }
+
     public LoadedMod? TryLoad(string absolutePath, List<ScanWarning> warnings)
+    {
+        return TryLoad(absolutePath, isResolutionOnly: false, warnings);
+    }
+
+    public LoadedMod? TryLoad(string absolutePath, bool isResolutionOnly, List<ScanWarning> warnings)
     {
         try
         {
@@ -40,6 +56,7 @@ public sealed class ModLoader
                 AbsolutePath = absolutePath,
                 ModKey = ModKey.FromFileName(Path.GetFileName(absolutePath)),
                 Overlay = overlay,
+                IsResolutionOnly = isResolutionOnly,
             };
         }
         catch (Exception ex)

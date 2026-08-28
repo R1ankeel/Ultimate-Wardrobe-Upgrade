@@ -94,7 +94,7 @@ public sealed class FolderCatalogScanner : ICatalogScanner
             foreach (var plugin in loadOrder)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var mod = loader.TryLoad(plugin.AbsolutePath, warnings);
+                var mod = loader.TryLoad(plugin, warnings);
                 if (mod is null)
                 {
                     _logger.LogWarning(

@@ -29,6 +29,29 @@ public sealed class RecordIndexTests
     }
 
     [Fact]
+    public void ResolutionOnlyMod_ContributesNoArmorContent_ButItsResolutionRecordsStay()
+    {
+        using var dir = new TestTempDir();
+        SyntheticSkyrimMods.WriteMaster(dir.Root);
+        SyntheticSkyrimMods.WriteMain(dir.Root);
+        var warnings = new List<ScanWarning>();
+        var loader = new ModLoader();
+        using var mods = new DisposableList<LoadedMod>();
+        mods.Add(loader.TryLoad(dir.File(SyntheticSkyrimMods.MasterFileName), warnings));
+        mods.Add(loader.TryLoad(dir.File(SyntheticSkyrimMods.MainFileName), isResolutionOnly: true, warnings));
+
+        var index = RecordIndex.Build(mods.Items, warnings);
+
+        Assert.Equal(1, index.ArmorCount);
+        Assert.Equal(0, index.ArmorAddonCount);
+        Assert.False(index.TryResolveArmor(SyntheticSkyrimMods.NewArmorKey, out _));
+        Assert.True(index.TryResolveArmor(SyntheticSkyrimMods.OverrideArmorKey, out var armor));
+        Assert.Equal("Base Armor", armor.Name?.String);
+        Assert.True(index.TryResolveKeyword(SyntheticSkyrimMods.MainHeavyKeywordKey, out _));
+        Assert.Equal(2, index.KeywordCount);
+    }
+
+    [Fact]
     public void LaterPlugin_OverridesEarlierRecord_ForSameFormId()
     {
         using var dir = new TestTempDir();

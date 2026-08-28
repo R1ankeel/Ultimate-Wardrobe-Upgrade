@@ -1,3 +1,4 @@
+using Mutagen.Bethesda.Plugins;
 using UltimateWardrobe.Core.Domain;
 using UltimateWardrobe.Scanner;
 using Xunit;
@@ -74,6 +75,36 @@ public sealed class LoadOrderBuilderTests
         Assert.Equal("Stray.esp", plugin.ModKey.FileName.ToString());
         var warning = Assert.Single(warnings);
         Assert.Contains("Ghost.esp", warning.Message);
+    }
+
+    [Fact]
+    public void ResolutionOnlyPlugin_IsLinkedBeforeDependents_WithoutMissingMasterWarnings()
+    {
+        using var dir = new TestTempDir();
+        SyntheticSkyrimMods.WriteChainPlugin(dir.Root, "Update.esp");
+        SyntheticSkyrimMods.WriteChainPlugin(dir.Root, "Skyrim.esp");
+        SyntheticSkyrimMods.WriteChainPlugin(dir.Root, "Dawnguard.esp", "Skyrim.esp", "Update.esp");
+        var loader = new ModLoader();
+        var discovery = new DiscoveryResult
+        {
+            DataPath = dir.Root,
+            Plugins = new[]
+            {
+                new DiscoveredPlugin { AbsolutePath = dir.File("Skyrim.esp"), ModKey = ModKey.FromFileName("Skyrim.esp") },
+                new DiscoveredPlugin { AbsolutePath = dir.File("Dawnguard.esp"), ModKey = ModKey.FromFileName("Dawnguard.esp") },
+                new DiscoveredPlugin { AbsolutePath = dir.File("Update.esp"), ModKey = ModKey.FromFileName("Update.esp"), IsResolutionOnly = true },
+            },
+            MissingExplicitMasters = Array.Empty<ModKey>(),
+        };
+        var warnings = new List<ScanWarning>();
+
+        var order = new LoadOrderBuilder(loader).Build(discovery, warnings);
+
+        Assert.Empty(warnings);
+        Assert.Equal(
+            new[] { "Skyrim.esp", "Update.esp", "Dawnguard.esp" },
+            order.Select(p => p.ModKey.FileName.ToString()).ToArray());
+        Assert.True(order.Single(p => p.ModKey.FileName.ToString() == "Update.esp").IsResolutionOnly);
     }
 
     [Fact]

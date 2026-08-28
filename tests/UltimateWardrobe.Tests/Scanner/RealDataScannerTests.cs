@@ -39,7 +39,13 @@ public class RealDataScannerTests
         var catalog = await new FolderCatalogScanner().ScanAsync(new VanillaCatalogSource(GameRoot));
         watch.Stop();
 
-        _output.WriteLine($"Vanilla scan: {watch.ElapsedMilliseconds} ms; TotalArmo={catalog.Stats.TotalArmo}, GroupedSets={catalog.Stats.GroupedSets}, Warnings={catalog.Warnings.Count}");
+        _output.WriteLine(
+            $"Vanilla scan: {watch.ElapsedMilliseconds} ms; TotalArmo={catalog.Stats.TotalArmo}, GroupedSets={catalog.Stats.GroupedSets}, " +
+            $"Skipped={catalog.Stats.Skipped}, MissingFiles={catalog.Stats.MissingFiles}, Warnings={catalog.Warnings.Count}");
+        foreach (var (reason, count) in catalog.Stats.SkippedByReason)
+        {
+            _output.WriteLine($"  skip {reason}: {count}");
+        }
 
         Assert.True(catalog.Stats.TotalArmo > 500, $"Expected TotalArmo > 500, got {catalog.Stats.TotalArmo}.");
         Assert.True(catalog.Stats.GroupedSets > 50, $"Expected GroupedSets > 50, got {catalog.Stats.GroupedSets}.");

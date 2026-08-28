@@ -146,6 +146,11 @@ public sealed class RecordIndex
         {
             cancellationToken.ThrowIfCancellationRequested();
 
+            if (mod.IsResolutionOnly)
+            {
+                continue;
+            }
+
             try
             {
                 foreach (var entry in mod.Overlay.Armors.RecordCache)
