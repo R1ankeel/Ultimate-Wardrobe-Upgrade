@@ -19,6 +19,16 @@ public enum CellLineRole
     PhysicsPatch,
 }
 
+/// <summary>
+/// Base type of the flat, virtualizable matrix projection (Sprint 6.8, manual-testing bug 3): the
+/// matrix body is one <see cref="IReadOnlyList{T}"/> of section headers and row bands served to a
+/// single <c>VirtualizingStackPanel</c>-backed <c>ItemsControl</c>, so a 3000+ row catalog only
+/// realizes the on-screen rows instead of the whole grid.
+/// </summary>
+public abstract class MatrixItemViewModel
+{
+}
+
 /// <summary>One rendered line in a matrix cell card (Phase 6 Sprint 6.4).</summary>
 public sealed record CellLineViewModel(string Text, CellLineRole Role);
 
@@ -82,9 +92,10 @@ public sealed class MatrixCellViewModel
 /// <summary>
 /// One row of the matrix (Phase 6 Sprint 6.4): a catalog <see cref="Set"/> within a gender section,
 /// with one cell per weight column. Rows are <see cref="IReadOnlyList{T}"/> projections (never an
-/// observable-collection matrix rebuild - 2-D virtualization constraint 4.5).
+/// observable-collection matrix rebuild - 2-D virtualization constraint 4.5). <see cref="DefaultCell"/>
+/// feeds the popover editor when the row's name is clicked (Sprint 6.8, manual-testing bug 6).
 /// </summary>
-public sealed class ArmorSetRowViewModel
+public sealed class ArmorSetRowViewModel : MatrixItemViewModel
 {
     public ArmorSet Set { get; }
     public Gender SectionGender { get; }
@@ -92,19 +103,38 @@ public sealed class ArmorSetRowViewModel
     public ArmorSetStatus Status { get; }
     public bool IsStatusMatch { get; }
     public IReadOnlyList<MatrixCellViewModel> Cells { get; }
+    public MatrixCellViewModel DefaultCell { get; }
 
     public ArmorSetRowViewModel(
         ArmorSet set,
         Gender sectionGender,
         ArmorSetStatus status,
         bool isStatusMatch,
-        IReadOnlyList<MatrixCellViewModel> cells)
+        IReadOnlyList<MatrixCellViewModel> cells,
+        MatrixCellViewModel defaultCell)
     {
         Set = set;
         SectionGender = sectionGender;
         Status = status;
         IsStatusMatch = isStatusMatch;
         Cells = cells;
+        DefaultCell = defaultCell;
+    }
+}
+
+/// <summary>
+/// One gender heading of the flat matrix projection (Sprint 6.8): a lightweight item that renders
+/// "FEMALE ARMOR" / "MALE ARMOR" between the row bands it precedes.
+/// </summary>
+public sealed class MatrixSectionHeaderViewModel : MatrixItemViewModel
+{
+    public Gender Gender { get; }
+    public string Header { get; }
+
+    public MatrixSectionHeaderViewModel(Gender gender)
+    {
+        Gender = gender;
+        Header = OverhaulMatrix.Text(gender);
     }
 }
 
@@ -130,10 +160,13 @@ public sealed class MatrixSectionViewModel
 /// <summary>
 /// The immutable result of projecting one catalog into the FEMALE/MALE matrix (Phase 6 Sprint 6.4):
 /// the ordered weight columns and the ordered gender sections with their row-band projections.
+/// <see cref="MatrixItems"/> is the flat, virtualizable projection of the same data (Sprint 6.8):
+/// section headers and row bands in order, served to one <c>VirtualizingStackPanel</c>.
 /// </summary>
 public sealed record OverhaulMatrixViewModel(
     IReadOnlyList<MatrixColumnViewModel> Columns,
-    IReadOnlyList<MatrixSectionViewModel> Sections);
+    IReadOnlyList<MatrixSectionViewModel> Sections,
+    IReadOnlyList<MatrixItemViewModel> MatrixItems);
 
 /// <summary>
 /// Pure projection of a catalog into the mapping matrix (Phase 6 Sprint 6.4, amendment 8). Column
@@ -168,6 +201,7 @@ internal static class OverhaulMatrix
         var normalizedSearch = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
 
         var sections = new List<MatrixSectionViewModel>();
+        var items = new List<MatrixItemViewModel>();
         foreach (var (sectionGender, _) in SectionOrder)
         {
             var rows = new List<ArmorSetRowViewModel>();
@@ -188,16 +222,42 @@ internal static class OverhaulMatrix
                 var isMatch = statusFilter.HasValue && status == statusFilter.Value;
                 var cells = columns.Select(col => BuildCell(set, sectionGender, col.Weight, mappings, library, status, isMatch))
                                    .ToList();
-                rows.Add(new ArmorSetRowViewModel(set, sectionGender, status, isMatch, cells));
+                var defaultCell = DefaultCellFor(set, sectionGender, columns, cells);
+                rows.Add(new ArmorSetRowViewModel(set, sectionGender, status, isMatch, cells, defaultCell));
             }
 
             if (rows.Count > 0)
             {
                 sections.Add(new MatrixSectionViewModel(sectionGender, rows));
+                items.Add(new MatrixSectionHeaderViewModel(sectionGender));
+                items.AddRange(rows);
             }
         }
 
-        return new OverhaulMatrixViewModel(columns, sections);
+        return new OverhaulMatrixViewModel(columns, sections, items);
+    }
+
+    /// <summary>
+    /// Picks the editable row coordinate for the row-name click (Sprint 6.8, manual-testing bug 6):
+    /// the first weight column that carries a variant for the section gender, so the popover can open
+    /// even when nothing is mapped yet. Falls back to the row's first cell (never null - a row only
+    /// exists when the catalog has at least one weight column).
+    /// </summary>
+    private static MatrixCellViewModel DefaultCellFor(
+        ArmorSet set,
+        Gender sectionGender,
+        IReadOnlyList<MatrixColumnViewModel> columns,
+        IReadOnlyList<MatrixCellViewModel> cells)
+    {
+        for (var i = 0; i < columns.Count; i++)
+        {
+            if (VariantFor(set, sectionGender, columns[i].Weight) is not null)
+            {
+                return cells[i];
+            }
+        }
+
+        return cells[0];
     }
 
     public static string Text(WeightClass weight) => weight switch

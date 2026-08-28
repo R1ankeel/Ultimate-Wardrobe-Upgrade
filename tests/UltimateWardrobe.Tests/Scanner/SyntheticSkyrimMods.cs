@@ -210,7 +210,8 @@ internal static class SyntheticSkyrimMods
     //   - Gender-specific covers: female-only and male-only armors (model signals).
     //   - Weird EDIDs: sort-last "zzz" prefix, Creation-Club "cc...-ba_" prefix, dirty "!!" leading
     //     symbols.
-    //   - Jewelry: an Amulet ARMO and a Circlet ARMO.
+    //   - Jewelry: an Amulet ARMO (skipped as jewelry since Sprint 6.8) and a Circlet ARMO (kept - a
+    //     head slot, not jewelry).
     //   - Dummy ARMO without any armature (-> NoArmature skip).
     //   - Boar-style creature-skin ARMO tied to a non-playable race (-> CreatureRace skip).
     //   - A pauldron belonging to two Outfits (deterministic tie-break).

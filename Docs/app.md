@@ -1,6 +1,6 @@
 # App - WPF Shell
 
-> Phase 6 (Sprints 6.1-6.5 done) - `src/UltimateWardrobe.App` is the WPF desktop shell. `net10.0-windows`, `UseWPF=true`, CommunityToolkit.Mvvm ViewModels, WPF-UI 4.3.0 Fluent shell, Microsoft.Extensions.Hosting composition root, Serilog logging. This doc records the composition/host lifecycle, the startup gate, the WPF-UI 4.3.0 service wiring, the Sprint 6.1 spike conclusions, the Sprint 6.2 project/overhaul management, the Sprint 6.3 donor library, the Sprint 6.4 mapping matrix grid and the Sprint 6.5 anchored-popover cell editor.
+> Phase 6 (Sprints 6.1-6.8 done) - `src/UltimateWardrobe.App` is the WPF desktop shell. `net10.0-windows`, `UseWPF=true`, CommunityToolkit.Mvvm ViewModels, WPF-UI 4.3.0 Fluent shell, Microsoft.Extensions.Hosting composition root, Serilog logging. This doc records the composition/host lifecycle, the startup gate, the WPF-UI 4.3.0 service wiring, the Sprint 6.1 spike conclusions, the Sprint 6.2 project/overhaul management, the Sprint 6.3 donor library, the Sprint 6.4 mapping matrix grid, the Sprint 6.5 anchored-popover cell editor and the Sprint 6.8 matrix performance/interaction fixes.
 
 ## Stack
 
@@ -89,7 +89,7 @@ The exact wiring is resolved against the shipped 4.3.0 API and verified by a hea
 - **Search.** `SearchText` filters the row band in both sections case-insensitively; a section with no matching rows is dropped.
 - **Popover wiring (Sprint 6.5).** `CellAt(sectionIndex,rowIndex,columnIndex)` resolves a cell's coordinates and `Activate`/`ActivateCellCommand` feed `ActiveCell` - the anchored popover anchors to that cell.
 - **Empty state.** A null/uncached catalog shows `IsEmpty` with the "run a scan first" hint.
-- **Virtualization.** Projection-shaped (rows are `IReadOnlyList`) and view-shaped (`VirtualizingStackPanel` row bands + horizontal cell `ItemsControl`, fixed header row + frozen set-name column). `MatrixCellViewModel.IsBlank` hides the cell card.
+- **Virtualization.** Projection-shaped (rows are `IReadOnlyList`) and view-shaped (`VirtualizingStackPanel` row bands + horizontal cell `ItemsControl`, fixed header row + frozen set-name column). `MatrixCellViewModel.IsBlank` hides the cell card. The Sprint 6.8 pass replaced the row-band view shape with ONE flat virtualized `ItemsControl` over the flattened `MatrixItems` - see the Sprint 6.8 section below.
 
 ## Anchored-popover cell editor (Sprint 6.5)
 
@@ -126,7 +126,7 @@ Repository-owned data lives under the user's Project root (`project.db`, `Source
 
 ## MVVM conventions
 
-`ObservableObject` partial classes with `[ObservableProperty]` / `[RelayCommand]` / `[AsyncRelayCommand]`, `[ObservableProperty]` collections, `AsyncRelayCommand` + `CanExecute` as the "busy" guard. ViewModels depend only on App-layer interfaces (`IAppNavigationService`, `IAppDialogService`, `ISnackbarService`, `IBackgroundTaskService`, `IOverhaulSourceValidator`, `ILogViewer`, `IDonorImportRunner`, `IOverhaulSelection`, `IThemeService`) so they run headless in xUnit; the WPF-UI-backed implementations live in `Views/Infrastructure`. Concrete Phase 2 services (`MappingService`, `DonorLibraryService`) are injected directly. The matrix's read-only projections (`MatrixColumnViewModel`, `MatrixSectionViewModel`, `ArmorSetRowViewModel`, `MatrixCellViewModel`, `CellLineViewModel`) are immutable `IReadOnlyList` snapshots, refreshed whole on `Refresh()` - no per-cell observable rebuild.
+`ObservableObject` partial classes with `[ObservableProperty]` / `[RelayCommand]` / `[AsyncRelayCommand]`, `[ObservableProperty]` collections, `AsyncRelayCommand` + `CanExecute` as the "busy" guard. ViewModels depend only on App-layer interfaces (`IAppNavigationService`, `IAppDialogService`, `ISnackbarService`, `IBackgroundTaskService`, `IOverhaulSourceValidator`, `ILogViewer`, `IDonorImportRunner`, `IOverhaulSelection`, `IThemeService`) so they run headless in xUnit; the WPF-UI-backed implementations live in `Views/Infrastructure`. Concrete Phase 2 services (`MappingService`, `DonorLibraryService`) are injected directly. The matrix's read-only projections (`MatrixColumnViewModel`, `MatrixSectionViewModel`, `MatrixSectionHeaderViewModel`, `ArmorSetRowViewModel`, `MatrixCellViewModel`, `CellLineViewModel`) are immutable `IReadOnlyList` snapshots refreshed whole on `Refresh()` - no per-cell observable rebuild. Those projections are flattened into the single `MatrixItems` list (section headers + rows) that drives the virtualized matrix body (Sprint 6.8).
 
 ## Export screen (Sprint 6.6)
 
@@ -159,6 +159,20 @@ The shell crashed right after the picker created or opened a project with `XamlP
 ## Post-6.6 crash fix - Overhaul screen invalid margin
 
 Clicking "Open" on an overhaul card in the Project screen crashed the app with `XamlParseException: "Auto,0,0,0" is not a valid value for "Margin"` the moment the page was built (v0.6.6.2). Root cause: the "Import patch" button inside the shared popover panel in `OverhaulView.xaml` declared `Margin="Auto,0,0,0"` - `Auto` is a Grid length, not a `Thickness`, so the whole page failed to parse when navigation resolved `OverhaulView` from DI (clicks were the only path that constructed the page; the Sprint 6.5/6.6 interaction suites exercised the view models headlessly, never the page). Fix: the button now uses a plain `Margin="12,0,0,0"`. The regression test `OverhaulViewBootTests.OverhaulView_builds_when_navigation_opens_it` resolves the page through the same `INavigationViewPageProvider.GetPage` path on a dedicated STA thread with an open `IProjectSession` + a selected Overhaul and fails again if an invalid margin returns.
+
+## Sprint 6.8 matrix performance + scan-time filter fixes
+
+Six findings from scanning the real game and opening a large Overhaul catalog landed in this pass.
+
+- **Jewelry and vanilla-enchanted records are filtered at scan time.** Rings and necklaces (`BipedFlags` Amulet/Ring) now skip with `SkipReason.Jewelry = 7`, and items whose name carries a vanilla enchantment suffix (the exact word list, matched longest-first, `OrdinalIgnoreCase`, in the new `VanillaEnchantmentFilter`) skip with `SkipReason.Enchanted = 8`. Both run inside `ArmorSetGrouper.ClassifyGarbage` AFTER `NoArmature`/`EmptyModel`/`NoSlot` and BEFORE `NoKeyword`, so the matrix shows fewer, meaningful armor rows (see `Docs/scanner.md`).
+- **Large-matrix RAM/freeze fix.** The old nested `ItemsControl` cell structure materialized thousands of cell cards at once (multi-GB heap, UI freeze on a 3000+ row catalog). The matrix body is now ONE flat `ItemsControl` over the flattened `MatrixItems` list (one `MatrixSectionHeaderViewModel` per section, one `ArmorSetRowViewModel` per row) inside a `ScrollViewer` with `CanContentScroll="True"` + `VirtualizingPanel.IsVirtualizing="True"` + `VirtualizationMode="Recycling"`, so only visible rows are realized. `ArmorSetRowViewModel.DefaultCell` gives the row-name button a meaningful activation target.
+- **Scrollbar no longer under the close button.** The body `ScrollViewer` gained `Margin="0,20,0,0"`, dropping the vertical scrollbar below the corner close "x".
+- **Long set names display fully.** The `MatrixRowName` style dropped its fixed `Width`/`TextTrimming` for `MaxWidth="220"` + `TextWrapping="Wrap"`, so long names wrap instead of truncating.
+- **Clickable row name.** The frozen set-name cell is now a `Button` (`MatrixRow_Click` in `OverhaulView.xaml.cs` + `ActivateCellCommand`/`DefaultCell`), so clicking a row name opens the anchored-popover cell editor just like a mapped column card.
+
+The committed goldens were regenerated (`UW_WRITE_GOLDENS=1`): the mini-universe amulet now reads as jewelry, so `MiniUniverse-catalog.json` dropped the `elven` set (`GroupedSets 11`, `Skipped 3`, `MissingFiles 38`); the static golden `MiniUniverse.esp` is byte-identical.
+
+New headless tests: 4 `ArmorSetGrouperTests` over the new `SyntheticFilteringUniverse` fixture + 2 `OverhaulViewModelTests` (flat `MatrixItems` order, row `DefaultCell` is the first weight column carrying a section variant). Full suite 687 tests green, Release 0 warnings / 0 errors.
 
 ## Screens still to come
 

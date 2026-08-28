@@ -345,6 +345,20 @@ public sealed class ArmorSetGrouper
             return SkipReason.NoSlot;
         }
 
+        // Rings and necklaces are jewelry, not replacable armor kits (manual-testing bug 1).
+        if (armor.BipedFlags.HasFlag(BipedObjectFlag.Amulet) || armor.BipedFlags.HasFlag(BipedObjectFlag.Ring))
+        {
+            return SkipReason.Jewelry;
+        }
+
+        // A generic vanilla-enchanted variant keeps the enchantment phrase as a display-name suffix
+        // (manual-testing bug 2); the base kit is usually also present, so the enchanted record is
+        // dropped instead of inviting a replacement that would wipe its enchantment.
+        if (VanillaEnchantmentFilter.EndsWithEnchantment(armor.Armor.Name?.String))
+        {
+            return SkipReason.Enchanted;
+        }
+
         if (armor.BipedFlags.HasFlag(BipedObjectFlag.Body) && !HasArmorKeyword(armor, index))
         {
             return SkipReason.NoKeyword;

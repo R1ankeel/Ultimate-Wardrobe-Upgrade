@@ -180,6 +180,43 @@ public class OverhaulViewModelTests
     }
 
     [Fact]
+    public void MatrixItems_flatten_headers_and_rows_in_section_order()
+    {
+        var catalog = Fixtures.CreateFullCatalog();
+        var vm = Fixtures.BuildVm(catalog, mappings: Array.Empty<PieceMapping>());
+
+        vm.MatrixItems.Should().HaveCount(10, "FEMALE header + 5 rows, MALE header + 3 rows");
+        vm.MatrixItems[0].Should().BeOfType<MatrixSectionHeaderViewModel>().Which.Header.Should().Be("FEMALE ARMOR");
+        vm.MatrixItems[1].Should().BeOfType<ArmorSetRowViewModel>().Which.DisplayName.Should().Be("Iron Armor");
+        vm.MatrixItems[5].Should().BeOfType<ArmorSetRowViewModel>().Which.DisplayName.Should().Be("Linen Armor");
+        vm.MatrixItems[6].Should().BeOfType<MatrixSectionHeaderViewModel>().Which.Header.Should().Be("MALE ARMOR");
+        vm.MatrixItems[7].Should().BeOfType<ArmorSetRowViewModel>().Which.DisplayName.Should().Be("Iron Armor");
+    }
+
+    [Fact]
+    public void Row_DefaultCell_is_the_first_weight_column_with_a_section_variant()
+    {
+        var catalog = Fixtures.CreateFullCatalog();
+        var vm = Fixtures.BuildVm(catalog, mappings: Array.Empty<PieceMapping>());
+
+        // Iron (Female) carries Heavy -> the first editable coordinate is the Heavy column.
+        var ironFemale = vm.Sections[0].Rows.Single(r => r.DisplayName == "Iron Armor");
+        ironFemale.DefaultCell.Weight.Should().Be(WeightClass.Heavy);
+        ironFemale.DefaultCell.Set.DisplayName.Should().Be("Iron Armor");
+
+        // Cloth Robe (Female) has only a Clothing variant.
+        var robe = vm.Sections[0].Rows.Single(r => r.DisplayName == "Cloth Robe");
+        robe.DefaultCell.Weight.Should().Be(WeightClass.Clothing);
+
+        // Linen (Female Light) is never mapped: the coordinate stays the default even though the cell
+        // renders blank, so clicking the row name can still open the replacement editor (bug 6).
+        var linen = vm.Sections[0].Rows.Single(r => r.DisplayName == "Linen Armor");
+        linen.DefaultCell.Weight.Should().Be(WeightClass.Light);
+        linen.DefaultCell.IsBlank.Should().BeTrue();
+        linen.DefaultCell.Variant.Should().BeNull("unmapped cells stay blank but stay reachable via the row click");
+    }
+
+    [Fact]
     public void Activate_feeds_the_cell_for_the_popover_anchor()
     {
         var catalog = Fixtures.CreateFullCatalog();

@@ -78,6 +78,13 @@ public sealed class OverhaulViewModel : ObservableObject
 
     public IReadOnlyList<MatrixSectionViewModel> Sections { get; private set; } = Array.Empty<MatrixSectionViewModel>();
 
+    /// <summary>
+    /// Flat, virtualizable projection of the matrix (Sprint 6.8, manual-testing bug 3): section
+    /// headers and row bands in order, bound to one <c>VirtualizingStackPanel</c>-backed
+    /// <c>ItemsControl</c> so a large catalog only realizes on-screen rows.
+    /// </summary>
+    public IReadOnlyList<MatrixItemViewModel> MatrixItems { get; private set; } = Array.Empty<MatrixItemViewModel>();
+
     public string ProgressLabel
     {
         get
@@ -229,6 +236,7 @@ public sealed class OverhaulViewModel : ObservableObject
         {
             Columns = Array.Empty<MatrixColumnViewModel>();
             Sections = Array.Empty<MatrixSectionViewModel>();
+            MatrixItems = Array.Empty<MatrixItemViewModel>();
             RaiseMatrixChanged();
             return;
         }
@@ -237,6 +245,7 @@ public sealed class OverhaulViewModel : ObservableObject
             catalog, overhaul.Mappings, _session.Project!.Library, _mapping, _searchText, _statusFilter);
         Columns = matrix.Columns;
         Sections = matrix.Sections;
+        MatrixItems = matrix.MatrixItems;
         RaiseMatrixChanged();
     }
 
@@ -247,6 +256,7 @@ public sealed class OverhaulViewModel : ObservableObject
         OnPropertyChanged(nameof(IsEmpty));
         OnPropertyChanged(nameof(Columns));
         OnPropertyChanged(nameof(Sections));
+        OnPropertyChanged(nameof(MatrixItems));
         OnPropertyChanged(nameof(ProgressLabel));
     }
 

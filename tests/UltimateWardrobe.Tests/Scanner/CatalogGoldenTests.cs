@@ -80,12 +80,17 @@ public sealed class CatalogGoldenTests : IDisposable
 
         Assert.Equal(23, catalog.Stats.TotalArmo);
         Assert.Equal(22, catalog.Stats.TotalArma);
-        Assert.Equal(12, catalog.Stats.GroupedSets);
-        Assert.Equal(2, catalog.Stats.Skipped);
+        Assert.Equal(11, catalog.Stats.GroupedSets);
+        Assert.Equal(3, catalog.Stats.Skipped);
         Assert.Equal(
-            new Dictionary<SkipReason, int> { [SkipReason.NoArmature] = 1, [SkipReason.CreatureRace] = 1 },
+            new Dictionary<SkipReason, int>
+            {
+                [SkipReason.NoArmature] = 1,
+                [SkipReason.CreatureRace] = 1,
+                [SkipReason.Jewelry] = 1,
+            },
             catalog.Stats.SkippedByReason);
-        Assert.Equal(40, catalog.Stats.MissingFiles);
+        Assert.Equal(38, catalog.Stats.MissingFiles);
     }
 
     [Fact]
@@ -94,7 +99,7 @@ public sealed class CatalogGoldenTests : IDisposable
         var catalog = await ScanWrittenUniverse();
 
         Assert.Equal(
-            new[] { "aaminipauldron", "champion", "daedric", "elven", "femalecorset", "ironarmor", "leather", "malebulwark", "nightmaresuit", "nordiccarved", "orcish", "vampirerobes" },
+            new[] { "aaminipauldron", "champion", "daedric", "femalecorset", "ironarmor", "leather", "malebulwark", "nightmaresuit", "nordiccarved", "orcish", "vampirerobes" },
             catalog.Sets.Select(s => s.Id));
     }
 
@@ -146,7 +151,7 @@ public sealed class CatalogGoldenTests : IDisposable
         Assert.Contains(catalog.Sets, s => s.Id == "nightmaresuit");
         Assert.Contains(catalog.Sets, s => s.Id == "daedric");
         Assert.Contains(catalog.Sets, s => s.Id == "champion");
-        Assert.Contains(catalog.Sets, s => s.Id == "elven");
+        Assert.DoesNotContain(catalog.Sets, s => s.Id == "elven");
         Assert.Contains(catalog.Sets, s => s.Id == "orcish");
     }
 

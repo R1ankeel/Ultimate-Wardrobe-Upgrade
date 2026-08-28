@@ -222,4 +222,67 @@ public sealed class ArmorSetGrouperTests
         var ids = result.Sets.Select(s => s.Id).ToList();
         Assert.Equal(ids.OrderBy(i => i, StringComparer.Ordinal), ids);
     }
+
+    [Fact]
+    public void RingsAndAmulets_SkippedAsJewelry_AndNeverAppearAsSets()
+    {
+        using var dir = new TestTempDir();
+        var result = BuildFilteringGrouping(dir);
+
+        Assert.Equal(2, SkippedFor(result, SkipReason.Jewelry));
+        Assert.DoesNotContain(result.Sets, s => s.Members.Any(m => m.EditorId is "JewelRing" or "JewelAmulet"));
+    }
+
+    [Fact]
+    public void Circlet_IsNotJewelry_AndStaysInCatalog()
+    {
+        using var dir = new TestTempDir();
+        var result = BuildFilteringGrouping(dir);
+
+        var set = Assert.Single(result.Sets, s => s.Id == "jewel");
+        Assert.Equal("Jewel", set.DisplayName);
+    }
+
+    [Fact]
+    public void EnchantedNameSuffixes_SkippedAsEnchanted_AndNeverAppearAsSets()
+    {
+        using var dir = new TestTempDir();
+        var result = BuildFilteringGrouping(dir);
+
+        Assert.Equal(4, SkippedFor(result, SkipReason.Enchanted));
+        foreach (var editorId in new[] { "EnchMuffleBoots", "EnchOneHandedCuirass", "EnchDualRegenHelmet", "EnchLowercaseFireGauntlets" })
+        {
+            Assert.DoesNotContain(result.Sets, s => s.Members.Any(m => m.EditorId == editorId));
+        }
+    }
+
+    [Fact]
+    public void PlainArmor_IsUntouched_ByJewelryAndEnchantmentFilters()
+    {
+        using var dir = new TestTempDir();
+        var result = BuildFilteringGrouping(dir);
+
+        var set = Assert.Single(result.Sets, s => s.Id == "plainheavy");
+        Assert.Equal("Plain Heavy", set.DisplayName);
+        Assert.Equal(2, SkippedFor(result, SkipReason.Jewelry));
+        Assert.Equal(4, SkippedFor(result, SkipReason.Enchanted));
+        Assert.Equal(0, SkippedFor(result, SkipReason.NoSlot));
+    }
+
+    private static GroupingResult BuildFilteringGrouping(TestTempDir dir, out List<ScanWarning> warnings)
+    {
+        SyntheticFilteringUniverse.Write(dir.Root);
+        warnings = new List<ScanWarning>();
+
+        var loader = new ModLoader();
+        using var loaded = loader.TryLoad(dir.File(SyntheticFilteringUniverse.FileName), warnings);
+        Assert.NotNull(loaded);
+
+        var index = RecordIndex.Build(new[] { loaded }, warnings);
+        var correlated = new ArmorCorrelator().Correlate(index, warnings);
+        return new ArmorSetGrouper().Group(correlated, index, warnings);
+    }
+
+    private static GroupingResult BuildFilteringGrouping(TestTempDir dir)
+        => BuildFilteringGrouping(dir, out _);
 }

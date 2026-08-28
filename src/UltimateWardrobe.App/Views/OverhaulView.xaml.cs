@@ -30,6 +30,20 @@ public partial class OverhaulView : System.Windows.Controls.Page
         }
     }
 
+    /// <summary>
+    /// Anchors the popover to the clicked row name (Sprint 6.8, manual-testing bug 6). The button's
+    /// <see cref="System.Windows.Controls.Primitives.ButtonBase.Command"/> runs first and opens the
+    /// editor for the row's <see cref="ArmorSetRowViewModel.DefaultCell"/>; this handler then pins the
+    /// popup to the name button itself.
+    /// </summary>
+    private void MatrixRow_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: ArmorSetRowViewModel row })
+        {
+            CellEditorPopup.PlacementTarget = (Button)sender;
+        }
+    }
+
     /// <summary>Closes the anchored editor on Esc (Sprint 6.5).</summary>
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {

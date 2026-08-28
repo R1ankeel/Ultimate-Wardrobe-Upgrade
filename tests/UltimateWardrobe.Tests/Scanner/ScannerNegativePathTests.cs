@@ -61,6 +61,6 @@ public sealed class ScannerNegativePathTests
             new StoryModCatalogSource(dir.Root, SyntheticSkyrimMods.MiniUniverseFileName));
 
         Assert.DoesNotContain(catalog.Warnings, w => w.Message.Contains("Master", StringComparison.OrdinalIgnoreCase));
-        Assert.Equal(12, catalog.Sets.Count);
+        Assert.Equal(11, catalog.Sets.Count);
     }
 }

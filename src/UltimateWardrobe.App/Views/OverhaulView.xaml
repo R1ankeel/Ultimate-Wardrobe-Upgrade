@@ -22,11 +22,11 @@
       <Setter Property="Background" Value="#11FFFFFF" />
     </Style>
     <Style x:Key="MatrixRowName" TargetType="TextBlock">
-      <Setter Property="Width" Value="220" />
+      <Setter Property="MaxWidth" Value="220" />
+      <Setter Property="TextWrapping" Value="Wrap" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="Margin" Value="0,0,12,0" />
-      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
   </Page.Resources>
 
@@ -110,72 +110,80 @@
       </Grid>
     </StackPanel>
 
-    <!-- Matrix body: two gender sections, each a vertical virtualized list of row-band rows -->
+    <!-- Matrix body: one flat virtualized list of section headers + row bands (Sprint 6.8 rework).
+         A single VirtualizingStackPanel inside the scroll viewport realizes only on-screen rows, so a
+         multi-thousand-row catalog no longer materializes the whole grid (manual-testing bug 3). The
+         top margin keeps the vertical slider's grip clear of the window close button (bug 4). -->
     <ScrollViewer Grid.Row="2"
-                  Margin="0,0,0,0"
-                  Visibility="{Binding IsEmpty, Converter={StaticResource InverseBoolToVis}}">
-      <ItemsControl ItemsSource="{Binding Sections}">
+                  Margin="0,20,0,0"
+                  Visibility="{Binding IsEmpty, Converter={StaticResource InverseBoolToVis}}"
+                  CanContentScroll="True"
+                  VirtualizingPanel.IsVirtualizing="True"
+                  VirtualizingPanel.VirtualizationMode="Recycling">
+      <ItemsControl ItemsSource="{Binding MatrixItems}">
         <ItemsControl.ItemsPanel>
           <ItemsPanelTemplate>
-            <StackPanel />
+            <VirtualizingStackPanel />
           </ItemsPanelTemplate>
         </ItemsControl.ItemsPanel>
-        <ItemsControl.ItemTemplate>
-          <DataTemplate DataType="{x:Type vm:MatrixSectionViewModel}">
-            <StackPanel Margin="0,12,0,0">
-              <TextBlock Text="{Binding Header}"
-                         FontWeight="SemiBold"
-                         FontSize="16"
-                         Opacity="0.9" />
-              <ItemsControl ItemsSource="{Binding Rows}" Margin="0,6,0,0">
+        <ItemsControl.Resources>
+          <DataTemplate DataType="{x:Type vm:MatrixSectionHeaderViewModel}">
+            <TextBlock Text="{Binding Header}"
+                       Margin="0,14,0,6"
+                       FontWeight="SemiBold"
+                       FontSize="16"
+                       Opacity="0.9" />
+          </DataTemplate>
+          <!-- The row name is a clickable button (manual-testing bug 6): clicking an item opens the
+               popover editor for its default (set, gender, weight) coordinate even before any mapping
+               exists. The name wraps instead of truncating (manual-testing bug 5). -->
+          <DataTemplate DataType="{x:Type vm:ArmorSetRowViewModel}">
+            <Grid ColumnDefinitions="232,*">
+              <Button Click="MatrixRow_Click"
+                      Command="{Binding DataContext.ActivateCellCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                      CommandParameter="{Binding DefaultCell}"
+                      Background="Transparent"
+                      BorderThickness="0"
+                      Padding="0,4,0,4"
+                      HorizontalContentAlignment="Left"
+                      ToolTip="{Binding DisplayName}">
+                <TextBlock Text="{Binding DisplayName}"
+                           Style="{StaticResource MatrixRowName}" />
+              </Button>
+              <ItemsControl Grid.Column="1" ItemsSource="{Binding Cells}">
                 <ItemsControl.ItemsPanel>
                   <ItemsPanelTemplate>
-                    <VirtualizingStackPanel />
+                    <StackPanel Orientation="Horizontal" />
                   </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
-                  <DataTemplate DataType="{x:Type vm:ArmorSetRowViewModel}">
-                    <Grid ColumnDefinitions="232,*">
-                      <TextBlock Text="{Binding DisplayName}"
-                                 Style="{StaticResource MatrixRowName}" />
-                      <ItemsControl Grid.Column="1" ItemsSource="{Binding Cells}">
+                  <DataTemplate DataType="{x:Type vm:MatrixCellViewModel}">
+                    <Button Style="{StaticResource MatrixCellCard}"
+                            Click="MatrixCell_Click"
+                            Visibility="{Binding IsBlank, Converter={StaticResource InverseBoolToVis}}"
+                            Command="{Binding DataContext.ActivateCellCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                            CommandParameter="{Binding}">
+                      <ItemsControl ItemsSource="{Binding Lines}">
                         <ItemsControl.ItemsPanel>
                           <ItemsPanelTemplate>
-                            <VirtualizingStackPanel Orientation="Horizontal" />
+                            <StackPanel />
                           </ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
-                          <DataTemplate DataType="{x:Type vm:MatrixCellViewModel}">
-                            <Button Style="{StaticResource MatrixCellCard}"
-                                    Click="MatrixCell_Click"
-                                    Visibility="{Binding IsBlank, Converter={StaticResource InverseBoolToVis}}"
-                                    Command="{Binding DataContext.ActivateCellCommand, RelativeSource={RelativeSource AncestorType=Page}}"
-                                    CommandParameter="{Binding}">
-                              <ItemsControl ItemsSource="{Binding Lines}">
-                                <ItemsControl.ItemsPanel>
-                                  <ItemsPanelTemplate>
-                                    <StackPanel />
-                                  </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                  <DataTemplate DataType="{x:Type vm:CellLineViewModel}">
-                                    <TextBlock Text="{Binding Text}"
-                                               FontSize="12"
-                                               TextTrimming="CharacterEllipsis" />
-                                  </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                              </ItemsControl>
-                            </Button>
+                          <DataTemplate DataType="{x:Type vm:CellLineViewModel}">
+                            <TextBlock Text="{Binding Text}"
+                                       FontSize="12"
+                                       TextTrimming="CharacterEllipsis" />
                           </DataTemplate>
                         </ItemsControl.ItemTemplate>
                       </ItemsControl>
-                    </Grid>
+                    </Button>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
-            </StackPanel>
+            </Grid>
           </DataTemplate>
-        </ItemsControl.ItemTemplate>
+        </ItemsControl.Resources>
       </ItemsControl>
     </ScrollViewer>
 
