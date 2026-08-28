@@ -9,13 +9,12 @@ UltimateWardrobe is a standalone Windows desktop application (.NET 10 LTS, WPF) 
 ```
 UltimateWardrobe.sln
 ├── src/UltimateWardrobe.Core        # Domain POCOs + enums + invariants + abstractions (no I/O)
-├── src/UltimateWardrobe.Archives    # P/Invoke over 7z.dll / UnRAR64.dll, signature detection, recursion
-├── src/UltimateWardrobe.Scanner     # Mutagen.Bethesda.Skyrim 0.54.4 folder catalog scanner (Sprint 1.2: plugin discovery + load order + record index + ARMO->ARMA->files correlation)
+├── src/UltimateWardrobe.Archives    # P/Invoke over 7z.dll / UnRAR64.dll, signature detection, recursion├── src/UltimateWardrobe.Scanner     # Mutagen.Bethesda.Skyrim 0.54.4 folder catalog scanner (Sprint 1.2: plugin discovery + load order + record index + ARMO->ARMA->files correlation)
 ├── src/UltimateWardrobe.DonorLibrary# Phase 2 donor classification + service (branches 1-3 + import flow, Sprints 2.0-2.5 done)
 ├── src/UltimateWardrobe.Mapping     # (Phase 3 done) manual mapping + patch detection + status/progress (Sprints 3.0-3.4 done - CRUD/validation + patch detection + set status/progress + determinism + real-donor Integration spot-check; Core 3.0.2 amendment: PatchPolicy + Overhaul.Policy)
 ├── src/UltimateWardrobe.Persistence # Phase 4 SQLite (Phase 4 done, Sprints 4.0-4.4 - project + Microsoft.Data.Sqlite + ProjectDatabase WAL/foreign_keys bootstrap + Migrator/M001_Initial schema + .bak backup + UnitOfWork re-issuing PRAGMA defer_foreign_keys=ON per transaction + RowCodecs + 5 repositories + PersistenceJson row codecs + IProjectStore.SaveAsync/LoadAsync whole-graph round-trip + Integration real-donor spot-check; Core 4.0.2 amendment: Overhaul.CreatedAt/ModifiedAt; Core 4.3 amendment: Overhaul.Catalog)
 ├── src/UltimateWardrobe.Patcher     # Phase 5 ESP patcher + file slicer + orchestrator (Phase 5 done, Sprints 5.0-5.4 - Core IPatcher amendment + TargetResolver + PatchException + PluginBuilder override records/ESL gate/loose-path skip + DonorFileLocator + FileSlicer whitelist slice/overlay/dedup + OutputFolder mod folder/meta.ini + WardrobePatcher orchestrator + real-data Integration spot-check + xEdit validation proxy; docs in Docs/patcher.md)
-├── src/UltimateWardrobe.App         # (Phase 6) WPF
+├── src/UltimateWardrobe.App         # (Phase 6 - WPF shell) generic-host composition root + ProjectPickerWindow startup gate (amendment 7) + FluentWindow/NavigationView shell + StatusBar (Sprint 6.1 done: DI smoke green, WPF-UI 4.3.0 wiring + spike in Docs/app.md; screens land in Sprints 6.2-6.6)
 └── tests/UltimateWardrobe.Tests     # xUnit + FluentAssertions
 ```
 
@@ -55,3 +54,5 @@ Per-project `global.json` pins SDK to `10.0.100` (`rollForward: latestFeature`).
 - `Docs/persistence.md` - SQLite project DB: schema, migrations + backup, repositories/`UnitOfWork`/`IProjectStore`, JSON serialization, test strategy (Phase 4, Sprints 4.0-4.4 done)
 - `Docs/patcher.md` - ESP patcher + target resolution + plugin builder + file slicer + orchestrator (Phase 5 done, Sprints 5.0-5.4 - `TargetResolver` + Core `IPatcher`/`PatchReport` amendment + `PluginBuilder` override records/ESL gate/amendment #6 loose-path skip + `DonorFileLocator` + `FileSlicer` whitelist slice/patch overlay/whole-export dedup + `OutputFolder` mod folder/meta.ini + `WardrobePatcher` orchestrator + real-data Integration spot-check + xEdit validation proxy)
 - `Plans/phase5.md` - Phase 5 plan, Sprints 5.0-5.4 done (Scaffolding + Core `IPatcher` amendment + `TargetResolver` + `PluginBuilder` + `FileSlicer`/`DonorFileLocator` + `OutputFolder`/`WardrobePatcher` + real-data Integration + xEdit proxy + DoD)
+- `Docs/app.md` - WPF shell: composition root + host lifecycle + startup `ProjectPickerWindow` gate (single project per process, amendment 7) + WPF-UI 4.3.0 wiring + spike conclusions (Phase 6, Sprint 6.1 done; screens in Sprints 6.2-6.6)
+- `Plans/phase6.md` - Phase 6 plan (scaffolding/composition root/shell + Project/Overhaul CRUD + donor import + mapping matrix grid + anchored-popover editor + export/polish/E2E + DoD)

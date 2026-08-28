@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/UltimateWardrobe.App/UltimateWardrobe.App.csproj" />
     <Project Path="src/UltimateWardrobe.Archives/UltimateWardrobe.Archives.csproj" />
     <Project Path="src/UltimateWardrobe.Core/UltimateWardrobe.Core.csproj" />
     <Project Path="src/UltimateWardrobe.DonorLibrary/UltimateWardrobe.DonorLibrary.csproj" />
