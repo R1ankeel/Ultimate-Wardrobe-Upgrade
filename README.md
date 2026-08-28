@@ -96,13 +96,15 @@ Standalone application for building full visual replacers for Skyrim SE armor an
   - Sprint 1.6 Tests + goldens - done (committed static golden plugin `tests/TestData/Plugins/MiniUniverse.esp` + golden catalog JSON regenerated via `UW_WRITE_GOLDENS=1`; snapshot compare normalizes the scan root to `<root>`; negative-path suite for corrupt/empty/missing-master plugins; `PlayableRaceFilter` whitelist corrected to real RACE EditorIDs (`NordRace` etc.) + `DefaultRace` universal fallback, verified on the real vanilla scan; Integration-gated real-data tests - vanilla scan (4197 ARMO, 3360 sets, ~1.2 s) + VIGILANT story-mod scan from rar with cleanup; full suite 318 tests green)
   - Sprint 1.7 Logging, reporting, docs - done (`FolderCatalogScanner` structured `ILogger<T>` milestone events + `ListLogger<T>`; `ScanReport` on `Catalog.Report` + `BuildSummary()` via `ScanReportBuilder`; heuristic tuning pass - trailing-variant-letter strip (`ArmorSteelBootsA` -> `steel`) + wardrobe-outfit filter so NPC composition outfits like `cwmission04outfitimperial` no longer swallow unrelated armor families; real vanilla 4197 ARMO -> 3396 sets in ~1.5 s with the plain Iron/Steel/Leather kits intact as single sets, guarded by `Vanilla_RealGame_FullKitsAreSingleSets_NoMegaSets`; `Docs/scanner.md` rewritten for the final pipeline; full suite 328 tests green)
 
-- Phase 2 - Donor Library - import + classification: in progress
+- Phase 2 - Donor Library - import + classification: done
   - Sprint 2.0 scaffolding + Core amendments + classification skeleton - done (`UltimateWardrobe.DonorLibrary` project; Core amendments `DonorFileEntry` + `FileManifest` entries with sizes + `DonorProvidedSet.Variants`; `DonorImportService` size-emitting manifest; `DonorPluginProbe` with the frozen main-plugin rule; `DonorClassifier` skeleton routing branches + `Unknown` kind; 346 tests green)
   - Sprint 2.1 classify via plugin + reference-master merge - done (`ReferenceMasterMerger` merging reference game esms into the load set without leaking reference armor; `DonorScanPipeline` donor-only ARMO -> correlate -> group -> assemble -> `ProvidedSets`; fall-through to branch 2 when branch 1 yields 0 sets; corrupt plugins warn + skip; 362 tests green)
   - Sprint 2.2 mesh/texture heuristics (branch 2) - done (`MeshPathIndexer` recursive `meshes/**/*.nif` + `textures/**/*.dds` globbing over root + `Data/` layouts; `DonorNameHeuristics` piece/gender/weight from stems + paths with `_0/_1/_1st` normalization and `_1 > _0 > _1st` primary-file preference; `MeshSetAssembler` ProvidedSets from mesh groups with TXST-like texture linkage - esp-less donors now classify; 407 tests green)
   - Sprint 2.3 BodySlide/physics detection + Kind (branch 3) - done (`BodySlideDetector` SliderSets `*.osp` + SliderGroups `*.xml` + BodySlide-root `.xml`; `PhysicsDetector` hdtSMP/cbpc/physics tokens, `SKSE/Plugins` configs + `.tri` under detected mesh sets; `DonorKindDetector` FullReplacer/BodyConversionPatch/PhysicsPatch/Unknown with flags independent of Kind; branch 3 runs for every classification; 434 tests green)
   - Sprint 2.4 `DonorLibraryService` import flow - done (`DonorLibraryService` wired to the real archive extractor: `ImportAsync` extract -> classify -> merge identity -> guard -> append with failure cleanup, `RemoveAsync` deletes the extracted folder, `ReclassifyAsync` re-runs an existing folder with an optional reference-carrying `catalogHint`; cross-project guard rejects an archive owned by this or another library via `DonorAlreadyOwnedException`; 441 tests green)
   - Sprint 2.5 tests + goldens + real-donor integration + docs - done (four-archetype `SyntheticDonorUniverse` with fixed Guids; committed `tests/TestData/DonorGolden/*-donor.json` golden snapshots regenerated via `UW_WRITE_GOLDENS=1` and deep-equal-compared; `RealDonorIntegrationTests` Integration-gated with auto-skip + loose asserts + branch-2 esp-less gate - branch-2 fixture is genuinely esp-less (`Red Hood - HIMBO`), and the Execution Log records the real-donor probe findings incl. that 'EBONWRAITH/Gryphon Knight' carry no detectable physics; full suite 455 tests green, Release 0 warnings/0 errors)
+- Phase 3 - Manual Mapping + Physics / BodySlide: in progress
+  - Sprint 3.0 scaffolding + Core amendment + Mapping skeleton - done (`UltimateWardrobe.Mapping` project depending on `Core` only; Core amendment `PatchPolicy` enum (`Loose/RequireBodyConversion/RequirePhysics/RequireBoth`) + `Overhaul.Policy` init-default `Loose` (roadmap 5.3 target-body / patch demand); `MappingService` skeleton with the full API surface (`AssignDonor`/`AttachPatch`/`Unassign`/`DetachPatch`/`GetStatus`/`GetArmorSetStatus`/`GetOverhaulProgress`), `OverhaulProgress` DTO, `PatchKind`, and the empty/unmapped progress path implemented + tested (`Done` is a caller-side overlay, never a fifth derived status); `SyntheticCatalogUniverse` Iron set (Male + Female Heavy) + `MappingFixtures` (`CreateOverhaulWithCatalog`/`CreateDonorOutput`); full suite 460 tests green, Release 0 warnings/0 errors)
 
 ## Stack
 
@@ -110,6 +112,7 @@ Standalone application for building full visual replacers for Skyrim SE armor an
 - WPF (MVVM, CommunityToolkit.Mvvm) - from Phase 6
 - Mutagen.Bethesda.Skyrim 0.54.4 - Phase 1 (Scanner): catalog scanning via Mutagen 0.54 - folder-only, masters-first order, ARMO -> ARMA -> files correlation, Outfit/EDID-mesh ArmorSet grouping, gender/weight variant assembly, catalog cache
 - Mutagen.Bethesda.Skyrim 0.54.4 + M.E.Logging.Abstractions - Phase 2 (DonorLibrary): donor plugin probe + branch-1 classification over donor ARMO with reference-master enrichment, branch-2 mesh/texture heuristics for esp-less donors, branch-3 BodySlide/physics detection + `DonorAssetKind`, deterministic `ProvidedSets` in catalog shapes
+- Phase 3 (Mapping) uses `Core` only (no package deps): manual mapping + patch detection + status/progress over the existing `PieceMapping`/`ArmorSetStatus`/`PatchPolicy` domain
 - SQLite + Microsoft.Data.Sqlite - from Phase 4
 - Archives extracted natively via `7z.dll` (7z/zip) + `UnRAR64.dll` (rar), SharpCompress fallback - Phase 0.2
 
@@ -120,7 +123,8 @@ UltimateWardrobe.slnx
 ├── src/UltimateWardrobe.Core        # Domain model, no I/O
 ├── src/UltimateWardrobe.Archives    # Archive extraction (native first)
 ├── src/UltimateWardrobe.Scanner     # Mutagen folder catalog scanner (Phase 1)
-├── src/UltimateWardrobe.DonorLibrary# Donor import + classification (Phase 2, Sprints 2.0-2.4)
+├── src/UltimateWardrobe.DonorLibrary# Donor import + classification (Phase 2, Sprints 2.0-2.5 done)
+├── src/UltimateWardrobe.Mapping     # Manual mapping + patch detection + status/progress (Phase 3, Sprint 3.0 scaffolding)
 └── tests/UltimateWardrobe.Tests     # xUnit + FluentAssertions
 ```
 
@@ -137,12 +141,13 @@ dotnet test
 ## Docs
 
 - `Plans/final-roadmap.md` - full roadmap (Phases 0-7)
-- `Plans/phase0.md`, `Plans/phase1.md`, `Plans/phase2.md` - implementation plans (phase 1 done; phase 2 in progress)
+- `Plans/phase0.md`, `Plans/phase1.md`, `Plans/phase2.md`, `Plans/phase3.md` - implementation plans (phase 1, 2 done; phase 3 in progress)
 - `Docs/architecture.md` - architecture overview
 - `Docs/domain-model.md` - domain model (Sprint 0.1 - done)
 - `Docs/archive-layer.md` - archive layer (Sprint 0.2 - done)
 - `Docs/scanner.md` - folder catalog scanner, grouping + gender/weight variants, catalog + cache, logging/report, committed goldens + integration gates (Sprint 1.7 - done)
 - `Docs/donor-library.md` - donor import + graduated classification, plugin probe, branch-1 pipeline + reference-master merge, branch-2 mesh/texture heuristics, branch-3 BodySlide/physics + kind, `DonorLibraryService` import/remove/reclassify + cross-project guard, and the Sprint 2.5 test suite (synthetic goldens + real-donor integration) (Phase 2, Sprints 2.0-2.5 - done)
+- `Docs/mapping.md` - manual mapping + patch detection + status/progress + `PatchPolicy` amendment (Phase 3, Sprint 3.0 scaffolding - done)
 
 ## Test Assets
 

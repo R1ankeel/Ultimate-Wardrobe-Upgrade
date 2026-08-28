@@ -1,10 +1,32 @@
 using FluentAssertions;
 using UltimateWardrobe.Core.Domain;
+using UltimateWardrobe.Core.Enums;
 
 namespace UltimateWardrobe.Tests.Core;
 
 public class OverhaulTests
 {
+    [Fact]
+    public void Overhaul_Policy_Defaults_To_Loose()
+    {
+        var project = Fixtures.CreateProject();
+        var source = Fixtures.CreateVanillaSource();
+        var overhaul = new Overhaul(Guid.NewGuid(), "Vanilla", project.Id, source);
+
+        overhaul.Policy.Should().Be(PatchPolicy.Loose);
+        overhaul.Mappings.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Overhaul_Policy_Can_Be_Set_Via_Initializer()
+    {
+        var project = Fixtures.CreateProject();
+        var source = Fixtures.CreateVanillaSource();
+        var overhaul = new Overhaul(Guid.NewGuid(), "Vanilla", project.Id, source) { Policy = PatchPolicy.RequireBoth };
+
+        overhaul.Policy.Should().Be(PatchPolicy.RequireBoth);
+    }
+
     [Fact]
     public void Overhaul_Creates_With_Source_Immutable()
     {

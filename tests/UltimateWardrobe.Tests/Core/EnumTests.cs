@@ -23,6 +23,7 @@ public class EnumTests
         ((int)DonorAssetKind.Unknown).Should().Be(0);
         ((int)BodyType.Unknown).Should().Be(0);
         ((int)PhysicsType.Unknown).Should().Be(0);
+        ((int)PatchPolicy.Loose).Should().Be(0);
     }
 
     [Theory]

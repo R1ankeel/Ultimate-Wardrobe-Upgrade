@@ -23,6 +23,7 @@ All enums have `Unknown = 0` as safe fallback for string deserialization.
 | `BodyType` | `Unknown, Vanilla, CBBE, ThreeBA, BHUNP, HIMBO` | Extensible - stored as string + enum |
 | `PhysicsType` | `Unknown, None, HDT_SMP, CBPC, SMP_3BA` | Extensible |
 | `ArchiveFormat` | `Unknown, SevenZip, Zip, Rar` | Detected by magic bytes |
+| `PatchPolicy` | `Loose, RequireBodyConversion, RequirePhysics, RequireBoth` | Overhaul target-body / physics demand (Sprint 3.0.2) |
 
 String round-trip via `Enum.Parse` / `ToString` is covered by tests at `tests/UltimateWardrobe.Tests/Core/EnumTests.cs:1`.
 
@@ -45,10 +46,14 @@ Source: `src/UltimateWardrobe.Core/Domain/Project.cs:1`
 ```csharp
 Overhaul(Guid id, string name, Guid projectId, CatalogSource source)
   Id, Name, ProjectId, Source (init-only), Mappings
+  PatchPolicy Policy (init-only, default Loose)   [Phase 3.0.2 amendment]
 ```
 
 - `Source` is immutable after construction - changing source requires a new `Overhaul`
 - Guards: empty ids / name / null source
+- `Policy` (Sprint 3.0.2) is the machine-readable target-body / physics demand for the Overhaul
+  (roadmap 5.3); defaults to `PatchPolicy.Loose`. Additive - existing construction is unaffected.
+  See `src/UltimateWardrobe.Core/Enums/PatchPolicy.cs`.
 
 Source: `src/UltimateWardrobe.Core/Domain/Overhaul.cs:1`
 
@@ -171,3 +176,4 @@ Reusable helpers for tests and later phases - no I/O:
 ## Next Phase
 
 - Phase 2 - `UltimateWardrobe.DonorLibrary` implements `IDonorClassifier` with graduated classification (branch 1 - the Phase 1 pipeline over donor plugins with reference-master enrichment; branch 2 - mesh/texture heuristics; branch 3 - BodySlide/physics detection + `DonorAssetKind`) plus the `DonorLibraryService` import/remove/reclassify flow with the cross-project guard. Sprint 2.5 froze the `DonorAsset` shape under a four-archetype synthetic golden suite (regens via `UW_WRITE_GOLDENS=1`) and an Integration-gated real-donor suite. See `Docs/donor-library.md`.
+- Phase 3 - `UltimateWardrobe.Mapping` implements the manual mapping `MappingService` over the existing `PieceMapping`/`ArmorSetStatus` domain (Sprint 3.0 scaffolding done): it assigns a donor per target piece/gender, attaches body/physics patch layers, derives `NeedsPatch` from the combined donor-or-patch `Detected*` flags plus `Overhaul.Policy`, recommends patches, and computes per-set `ArmorSetStatus` + Overhaul progress (`Done` is a caller-side boolean overlay, not a derived status). Core gained the additive `PatchPolicy` enum + `Overhaul.Policy`. Workspace pending: CRUD/validation (3.1), patch detection (3.2), status/progress (3.3), real-donor + docs (3.4). See `Docs/mapping.md`.

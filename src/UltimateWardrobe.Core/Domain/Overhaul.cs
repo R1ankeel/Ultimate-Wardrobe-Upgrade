@@ -1,3 +1,5 @@
+using UltimateWardrobe.Core.Enums;
+
 namespace UltimateWardrobe.Core.Domain;
 
 public sealed class Overhaul
@@ -7,6 +9,13 @@ public sealed class Overhaul
     public Guid ProjectId { get; init; }
     public CatalogSource Source { get; init; }
     public List<PieceMapping> Mappings { get; }
+
+    /// <summary>
+    /// The target body / physics demand (roadmap 5.3). Defaults to <see cref="PatchPolicy.Loose"/>,
+    /// so the donor's own <c>Detected*</c> flags drive <c>NeedsPatch</c>; the Phase 6 UI sets the
+    /// stricter values. Additive - existing constructor calls and object initializers are unaffected.
+    /// </summary>
+    public PatchPolicy Policy { get; init; } = PatchPolicy.Loose;
 
     public Overhaul(Guid id, string name, Guid projectId, CatalogSource source)
     {
