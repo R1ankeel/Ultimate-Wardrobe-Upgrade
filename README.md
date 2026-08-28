@@ -117,6 +117,7 @@ Standalone application for building full visual replacers for Skyrim SE armor an
   - Sprint 4.4 Integration + docs + DoD - done (new `ProjectStoreIntegrationTests` `[Trait("Category","Integration")]`: the full Phase 4 loop over a REAL donor - import + classify `Red Hood - HIMBO` (esp-less branch-2 fixture, `BodyConversionPatch` with real BodySlide + physics flags) -> synthesize the Iron catalog -> assign synthetic FullReplacer donors and ATTACH the real donor as the body-conversion patch layer through `MappingService` -> `SaveAsync` -> reopen in a fresh `ProjectDatabase` -> `LoadAsync` -> assert the reloaded graph deep-equals, `GetArmorSetStatus`/`GetOverhaulProgress` identical, and the extracted donor folder path still resolves; auto-skips when `ModsForTests/Armor` lacks the fixture, cleans `%TEMP%/UW_Donor_*` + test `project.db` dir in `finally`; `.gitignore` now blocks `*.db`, `*.db-wal`, `*.db-shm`, `*.db.bak` (via `*.bak`); full suite 536 tests green (521 non-integration + 15 Integration), Release 0 warnings/0 errors, no artifacts)
 - Phase 5 - ESP patcher + file slicer: in progress (Sprints 5.0-5.4, see `Plans/phase5.md`)
   - Sprint 5.0 scaffolding + Core `IPatcher` amendment + `TargetResolver` - done (new `UltimateWardrobe.Patcher` project depending on `Core` + `Scanner` (amendment #4) + Mutagen via Scanner, registered in `UltimateWardrobe.slnx` + Tests; Core additive amendment in `IPatcher.cs`: `BuildAsync(Overhaul, DonorLibrary, outputDir, IProgress<PatchProgress>?, ct)`, `PatchResult.Report` (init, nullable) + `PatchReport`/`PatchWarning`/`PatchProgress`; `TargetResolver` resolves `Overhaul.Catalog` pieces to live (ARMO, ARMA) records over the Phase 1 pipeline (PluginDiscovery + LoadOrderBuilder + ModLoader + RecordIndex) - ARMO by EditorID primary / FormId fallback, ARMA by `ArmaEditorId` then first armature addon, gendered `Model` paths normalized for the amendment #6 loose-path skip; missing catalog / unreadable source -> typed `PatchException`, per-mapping unresolved -> `PatchWarning` + skip; 10 new `TargetResolverTests` incl. FormId + ARMA fallbacks, gender-split model extraction, resolution over a real scanned catalog and the negative paths; full suite 546 tests green (536 + 10), Release 0 warnings/0 errors, no artifacts)
+  - Sprint 5.1 `PluginBuilder` - done (output ESP `UltimateWardrobe - <Name>.esp` with ARMA override records via `GetOrAddAsOverride` re-resolved by FormKey (getters kept alive through the write); gendered `WorldModel` `GivenPath` writes, missing slots created not dereferenced; ordinal-guarded `UW_` EditorID prefix; amendment #6 loose-path skip via `PatchPathRules.EqualsNormalized` (null current path never skips) + skip warnings; amendment #7 ESL gate - `IsSmallMaster` set for the Vanilla + DLC source kind only, survives the `WriteToBinary` -> `CreateFromBinaryOverlay` round trip; amendment #8 effective-mesh shadowing `ResolveEffectiveMesh` (body first, physics last wins, `Data/`-prefix-insensitive game-relative equality); `WriteToBinary` with auto-collected masters; `PatchResult.PluginPath` + report with `OverriddenRecords` distinct-count; 11 new `PluginBuilderTests` reopening the built esp; full suite 557 tests green (546 + 11), Release 0 warnings/0 errors, no artifacts)
 
 ## Stack
 
@@ -126,7 +127,7 @@ Standalone application for building full visual replacers for Skyrim SE armor an
 - Mutagen.Bethesda.Skyrim 0.54.4 + M.E.Logging.Abstractions - Phase 2 (DonorLibrary): donor plugin probe + branch-1 classification over donor ARMO with reference-master enrichment, branch-2 mesh/texture heuristics for esp-less donors, branch-3 BodySlide/physics detection + `DonorAssetKind`, deterministic `ProvidedSets` in catalog shapes
 - Phase 3 (Mapping) uses `Core` only (no package deps): manual mapping + patch detection + status/progress over the existing `PieceMapping`/`ArmorSetStatus`/`PatchPolicy` domain (Phase 3 done)
 - SQLite + Microsoft.Data.Sqlite - Phase 4 (Persistence): one `project.db` per Project, WAL + `foreign_keys=ON`, forward-only migrations with `.bak` backup, repositories/`UnitOfWork`/`IProjectStore` whole-graph save/load
-- Mutagen.Bethesda.Skyrim 0.54.4 (via Scanner) + M.E.Logging.Abstractions - Phase 5 (Patcher): `TargetResolver` resolves catalog pieces to live (ARMO, ARMA) records over the Phase 1 load pipeline; Core `IPatcher`/`PatchReport`/`PatchWarning`/`PatchProgress` amendment (Sprint 5.0; ESP writer + file slicer land in Sprints 5.1-5.4)
+- Mutagen.Bethesda.Skyrim 0.54.4 (via Scanner) + M.E.Logging.Abstractions - Phase 5 (Patcher): `TargetResolver` resolves catalog pieces to live (ARMO, ARMA) records over the Phase 1 load pipeline; `PluginBuilder` writes the output esp with ARMA override records (`GetOrAddAsOverride`), gendered `WorldModel` writes, `UW_` prefix, auto masters, ESL gate and amendment #6 loose-path skip (Sprints 5.0-5.1 done; file slicer + orchestrator land in Sprints 5.2-5.4)
 - Archives extracted natively via `7z.dll` (7z/zip) + `UnRAR64.dll` (rar), SharpCompress fallback - Phase 0.2
 
 ## Solution
@@ -139,7 +140,7 @@ UltimateWardrobe.slnx
 ├── src/UltimateWardrobe.DonorLibrary# Donor import + classification (Phase 2, Sprints 2.0-2.5 done)
 ├── src/UltimateWardrobe.Mapping     # Manual mapping + patch detection + status/progress (Phase 3, Sprints 3.0-3.4 done)
 ├── src/UltimateWardrobe.Persistence # SQLite project DB (Phase 4 done, Sprints 4.0-4.4)
-├── src/UltimateWardrobe.Patcher     # ESP patcher + target resolution (Phase 5, Sprint 5.0 done)
+├── src/UltimateWardrobe.Patcher     # ESP patcher + target resolution (Phase 5, Sprints 5.0-5.1 done)
 └── tests/UltimateWardrobe.Tests     # xUnit + FluentAssertions
 ```
 
@@ -156,7 +157,7 @@ dotnet test
 ## Docs
 
 - `Plans/final-roadmap.md` - full roadmap (Phases 0-7)
-- `Plans/phase0.md`, `Plans/phase1.md`, `Plans/phase2.md`, `Plans/phase3.md`, `Plans/phase4.md`, `Plans/phase5.md` - implementation plans (phases 1, 2, 3, 4 done; phase 5 in progress, Sprint 5.0 done)
+- `Plans/phase0.md`, `Plans/phase1.md`, `Plans/phase2.md`, `Plans/phase3.md`, `Plans/phase4.md`, `Plans/phase5.md` - implementation plans (phases 1, 2, 3, 4 done; phase 5 in progress, Sprints 5.0-5.1 done)
 - `Docs/architecture.md` - architecture overview
 - `Docs/domain-model.md` - domain model (Sprint 0.1 - done)
 - `Docs/archive-layer.md` - archive layer (Sprint 0.2 - done)
@@ -164,7 +165,7 @@ dotnet test
 - `Docs/donor-library.md` - donor import + graduated classification, plugin probe, branch-1 pipeline + reference-master merge, branch-2 mesh/texture heuristics, branch-3 BodySlide/physics + kind, `DonorLibraryService` import/remove/reclassify + cross-project guard, and the Sprint 2.5 test suite (synthetic goldens + real-donor integration) (Phase 2, Sprints 2.0-2.5 - done)
 - `Docs/mapping.md` - manual mapping + patch detection + status/progress + determinism + real-donor spot-check (Phase 3, Sprints 3.0-3.4 - done)
 - `Docs/persistence.md` - SQLite project DB: schema, migrations + backup, repositories/`IProjectStore`/`UnitOfWork` flow, JSON serialization, test strategy + Integration round-trip (Phase 4, Sprints 4.0-4.4 - done)
-- `Docs/patcher.md` - ESP patcher: target resolution + Core `IPatcher`/`PatchReport` amendment (Phase 5, Sprint 5.0 done; plugin writer/slicer/orchestrator documented in Sprints 5.1-5.4)
+- `Docs/patcher.md` - ESP patcher: target resolution + `PluginBuilder` override records + ESL gate + amendment #6 loose-path skip + Core `IPatcher`/`PatchReport` amendment (Phase 5, Sprints 5.0-5.1 done; plugin writer done, slicer/orchestrator documented in Sprints 5.2-5.4)
 
 ## Test Assets
 

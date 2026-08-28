@@ -235,6 +235,10 @@ internal static class SyntheticSkyrimMods
     public static FormKey MiniIronGauntletsKey => new(MiniUniverseKey, 0xE32);
     public static FormKey MiniIronBootsKey => new(MiniUniverseKey, 0xE33);
     public static FormKey MiniIronCuirassAddonKey => new(MiniUniverseKey, 0xE34);
+
+    public static string MiniIronCuirassMalePath => "meshes/armor/mini/IronCuirass/male.nif";
+
+    public static string MiniIronCuirassFemalePath => "meshes/armor/mini/IronCuirass/female.nif";
     public static FormKey MiniIronHelmetAddonKey => new(MiniUniverseKey, 0xE35);
     public static FormKey MiniIronGauntletsAddonKey => new(MiniUniverseKey, 0xE36);
     public static FormKey MiniIronBootsAddonKey => new(MiniUniverseKey, 0xE37);
