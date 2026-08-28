@@ -1,6 +1,6 @@
 # Donor Library: Import + Classification
 
-> Phase 2, Sprints 2.0-2.4 done - `src/UltimateWardrobe.DonorLibrary` - graduated classification for extracted donor folders (branch 1 runs the Phase 1 scanner pipeline over donor plugins, optionally enriched with reference game esms; branch 2 classifies mesh/texture replacers from paths alone; branch 3 detects BodySlide/physics artifacts and derives `DonorAssetKind`) plus the end-to-end `DonorLibraryService` import/remove/reclassify flow wired to the real archive extractor (Sprint 2.4).
+> Phase 2, Sprints 2.0-2.5 done - `src/UltimateWardrobe.DonorLibrary` - graduated classification for extracted donor folders (branch 1 runs the Phase 1 scanner pipeline over donor plugins, optionally enriched with reference game esms; branch 2 classifies mesh/texture replacers from paths alone; branch 3 detects BodySlide/physics artifacts and derives `DonorAssetKind`) plus the end-to-end `DonorLibraryService` import/remove/reclassify flow wired to the real archive extractor (Sprint 2.4) and the repeatable test suite - synthetic goldens + real-donor integration (Sprint 2.5).
 
 ## Overview
 
@@ -34,6 +34,7 @@ User drops an archive
 | `PhysicsDetector.cs` | Branch 3: hdt/cbpc/physics/tri globbing + `SKSE/Plugins` configs (Sprint 2.3) |
 | `DonorKindDetector.cs` | Branch 3: `FullReplacer | BodyConversionPatch | PhysicsPatch | Unknown` (Sprint 2.3) |
 | `DonorLibraryService.cs` | End-to-end flow (Sprint 2.4): `ImportAsync` / `RemoveAsync` / `ReclassifyAsync`, cross-project guard |
+| `tests/.../DonorLibrary/SyntheticDonorUniverse.cs` | Four run-time archetype builders for repeatable unit/golden covers (Sprint 2.5) |
 
 ## Branch routing (DonorClassifier)
 
@@ -198,6 +199,47 @@ On any failure after extraction the service deletes the extracted `Source/<Impor
 
 The guard keys on the archive SHA-256 hash: the same archive cannot belong to two projects. `otherLibraries` supplies the other projects' libraries so `ImportAsync` can reject an already-owned archive. A duplicate within the same library is rejected too.
 
+## Sprint 2.5 - repeatable tests + goldens + real-donor integration
+
+Sprint 2.5 makes classification verifiable and repeatable in two ways: a fully synthetic `DonorModBuilder`/`DonorMeshTreeBuilder`-driven universe with four committed golden snapshots (no 7z/rar or game esm needed), and an Integration-gated real-donor suite that auto-skips when `ModsForTests/Armor` is absent.
+
+### Synthetic donor universe (2.5.1)
+
+`tests/UltimateWardrobe.Tests/DonorLibrary/SyntheticDonorUniverse.cs` defines `public enum SyntheticDonorArchetype` with FOUR fixed-Guid, deterministic archetypes (recorded decision 2026-08-28 - four, not three, so each `DonorAssetKind` lane is exercised):
+
+| Archetype | Fixture | Expected classification |
+|-----------|---------|------------------------|
+| `EspFullReplacer` | `DonorKit.esp` via `DonorModBuilder.WriteSelfContained` | `FullReplacer`, 1 set `donorkit`, Male + Female Heavy |
+| `MeshOnlyReplacer` | plain-file `meshes/armor/iron/f|m/...` via `DonorMeshTreeBuilder.Write` | `FullReplacer` (branch 2), 1 set `iron`, body piece present |
+| `BodySlideOnlyPatch` | one `CalienteTools/BodySlide/SliderSets/*.osp` | `BodyConversionPatch`, no sets |
+| `PhysicsOnlyPatch` | one `SKSE/Plugins/hdtSMP64.dll` | `PhysicsPatch`, no sets |
+
+Each `FolderName` uses a fixed `Guid(0x0f1e5f00, ...0001..0004)` so every run reintroduces the same import/folder identity. The module is public so `DonorGoldenTests` can address the theory data from a separate class while keeping a single universe definition.
+
+### Golden classification snapshots (2.5.3)
+
+`tests/UltimateWardrobe.Tests/DonorLibrary/DonorGoldenData.cs` declares the golden dir (`tests/TestData/DonorGolden/`) and per-archetype `*-donor.json` paths. `DonorGoldenTests.cs` is a `[Theory]` over the four archetypes:
+
+- `Serialize` (write gate, `UW_WRITE_GOLDENS=1`): classifies the synthetic fixture, serializes with the `CatalogCacheStore.JsonOptions` conventions (camelCase, string enums, omit null, compact), normalizes `extractedPath` to `<root>` and strips `importedAt`, overwrites the committed golden, then runs once to confirm the compare path passes. The `<`/`>` chars are escaped to `\u003C`/`\u003E` by the serializer - both sides share the same serializer so the snapshot compare is stable.
+- `MatchesGolden` (no env var): re-classifies, applies the same normalization, and deep-equals the committed snapshot with the expected `Kind` (Snake = one-sane-value per field, DeepEquals proves the whole payload).
+- A byte-determinism test re-classifies the same fixture and asserts the serialized payload is byte-identical.
+
+The committed goldens cover all four archetypes and serve as the regression baseline Phase 3 will compare against.
+
+### Real-donor integration (2.5.2) + branch-2 gate (2.5.2b)
+
+`tests/UltimateWardrobe.Tests/DonorLibrary/RealDonorIntegrationTests.cs` is `[Trait("Category", "Integration")]`. Every test locates its archive by a filename fragment under `ModsForTests/Armor`; when the archive (or the folder) is absent it prints a diagnostic line and returns (auto-skip, never fails). Each available fixture is extracted to `%TEMP%/UW_Donor_<guid>`, classified with a vanilla hint from `VanillaCatalogSource(@"D:\Skymod\Stock Game")`, asserted loosely (`Kind != Unknown` OR `>= 1 ProvidedSet` OR BodySlide/physics flags non-empty), diagnosed via `ITestOutputHelper`, and cleaned up in a `finally`.
+
+The `Gate_Branch2_Fixture_Is_Truly_EspLess` test enforces gate 2.5.2b: it extracts the branch-2 fixture and asserts it contains zero `.esp/.esm/.esl`, so branch 2 is exercised on a REAL esp-less mod, not only synthetic trees.
+
+Recorded real-donor findings (execution, 2026-08-28; probe of every `ModsForTests/Armor` archive):
+
+- `Rangers Armor` (rar, has `[Tofi] Rangers Armor.esp`) - branch 1 `FullReplacer`, 3 sets. Exercises the plugin lane.
+- `Red Hood - HIMBO` (7z, esp-less) - `BodyConversionPatch`, 1 set + 2 SliderSets + 10 physics flags. The genuinely esp-less branch-2 + physics-flagging fixture (gate 2.5.2b PASS: zero plugins).
+- `Rangers Armor - CBBE Patch` (rar, esp-less) - `BodyConversionPatch`, 2 SliderSets. Real body-conversion patch.
+- The shortlist's "physics patch" candidates did NOT carry detectable physics: `EBONWRAITH - HDT SMP Patch` ships only mesh weight variants (classifies `Unknown`), and `Gryphon Knight Armor`'s `.tri` morphs sit in folders that received no ProvidedSet (so physics flags stay empty and it classifies `Unknown`). Physics flags attach to set mesh folders only, so a clean standalone physics patch is not constructible from this corpus; `Red Hood - HIMBO` is used instead to exercise the real physics-flagging path.
+- The full probe confirmed "Nightshade CBBE 3BA" and "Red Hood - Main File" both ship an esp (branch 1), which is why the branch-2 fixture is `Red Hood - HIMBO`.
+
 ## Determinism
 
 - Probe ordering, reference merge ordering, ARMO ordering (`ModKey.Name` ordinal, then `FormKey.ID`), and manifest ordering (ordinal by relative path) are all stable.
@@ -217,8 +259,9 @@ The guard keys on the archive SHA-256 hash: the same archive cannot belong to tw
 - Sprint 2.2: 45 new tests (`MeshPathIndexerTests` 7, `DonorNameHeuristicsTests` 30, `DonorMeshAssemblerTests` 8) - indexer layout globbing/dedupe/empty; heuristics unit cases incl. gender precedence and weight substring+priority; branch-2 end-to-end: iron male/female kit family + texture linkage + slot order + `FormId 0`, clothes path from a `Data/` layout, unhelpful `meshes/zzzztexture` folder falls back to the `zzzztexture` key with an `Other` piece, LOD/_1st one-piece-with-preferred-path while alternates stay manifest-only, texture-only folder yields no sets without crashing, heavy-token weight class, mesh-only determinism (projected shape + manifest equality), and esp-fall-through classifies via branch 2. Helper `DonorMeshTreeBuilder` writes runtime files - no Mutagen for branch 2. The pre-2.2 `LooseFiles_NoPlugins_...` test (written when branch 2 did not exist) now asserts the `iron` set while keeping its manifest-size focus.
 - Sprint 2.3: 27 new tests (`BodySlideDetectorTests` 5, `PhysicsDetectorTests` 6, `DonorKindDetectorTests` 8, `DonorKindClassifierTests` 8) - the four archetypes classify to the expected Kind (bodySlide-only -> BodyConversionPatch, physics-only -> PhysicsPatch, meshes+esp -> FullReplacer, meshes+bodySlide -> FullReplacer WITH flag, empty -> Unknown); tri morphs flagged only under set mesh folders; Data-layout stripping; both-layout dedup; slider-wins-over-physics priority; branch-1 Ring-only set is FullReplacer while a branch-2 Ring-only mesh set falls to the flag kinds. Four pre-2.3 Kind assertions updated from `Unknown` to `FullReplacer` (branch-1 plugin, mesh-only iron kit, loose-file `iron` set); empty/texture-only/zero-ARMO cases keep `Unknown`.
 - Sprint 2.4: 7 new `DonorLibraryServiceTests` - runtime-built `System.IO.Compression.ZipArchive` imported into a temp project root -> extracted `Source/<ImportId>/` + `_meta.json` + classified asset appended to the library (hash not the `classification-pending` placeholder); reclassify switches Kind from `Unknown` to `FullReplacer` when a reference-carrying hint (the `RefBase.esm` game root) appears, preserving the identity fields; remove deletes the files and the list entry; remove tolerates a missing folder; duplicate-library guard rejects an archive owned by another library (and within the same library); failed classification cleans up so no orphan `Source/<ImportId>/` subfolder remains.
-- Full suite 441/441 green (was 434, +7), Release 0 warnings/0 errors, no temp `UW_Donor_*` dirs, no `TestResults/`.
+- Sprint 2.5: 14 new tests - `DonorGoldenTests` 9 (a `[Theory]` of 4 archetypes x Serialize + MatchesGolden, plus a byte-determinism test; generation behind `UW_WRITE_GOLDENS=1`, committed snapshots under `tests/TestData/DonorGolden/`) and `RealDonorIntegrationTests` 5 (Integration category, auto-skip, loose asserts; branch-2 esp-less gate). The four archetypes are driven by the fixed-Guid `SyntheticDonorUniverse`.
+- Full suite 455/455 green (was 441, +14), Release 0 warnings/0 errors, no temp `UW_Donor_*` dirs, no `TestResults/`.
 
 ## Status
 
-Sprints 2.0-2.4 are complete: import-time manifest, plugin probe, branch-1 classification with optional reference enrichment, branch-2 mesh/texture heuristics (esp-less donors produce real `ProvidedSets`), branch-3 BodySlide/physics detection + `DonorAssetKind` derivation (flags independent of Kind), deterministic classification for all folder shapes, and the end-to-end `DonorLibraryService` import/remove/reclassify flow with the cross-project guard and failure cleanup. Golden snapshots, real-donor integration tests, and the final docs pass land in Sprint 2.5.
+Sprints 2.0-2.5 are complete: import-time manifest, plugin probe, branch-1 classification with optional reference enrichment, branch-2 mesh/texture heuristics (esp-less donors produce real `ProvidedSets`), branch-3 BodySlide/physics detection + `DonorAssetKind` derivation (flags independent of Kind), deterministic classification for all folder shapes, the end-to-end `DonorLibraryService` import/remove/reclassify flow with the cross-project guard and failure cleanup, and a repeatable test suite - four-archetype synthetic goldens (regenerated via `UW_WRITE_GOLDENS=1`) plus a real-donor Integration-gated suite that auto-skips without the `ModsForTests/Armor` corpus. Phase 2 (import + classification) is functionally complete; the mapping UI and export pipeline build on it in later phases.

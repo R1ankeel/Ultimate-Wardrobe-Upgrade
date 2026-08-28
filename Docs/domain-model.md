@@ -170,4 +170,4 @@ Reusable helpers for tests and later phases - no I/O:
 
 ## Next Phase
 
-- Sprint 2.0-2.3 - `UltimateWardrobe.DonorLibrary` implements `IDonorClassifier` with graduated classification (branch 1 - the Phase 1 pipeline over donor plugins with reference-master enrichment; branch 2 - mesh/texture heuristics, Sprint 2.2, present; branch 3 - BodySlide/physics detection + `DonorAssetKind`, Sprint 2.3, present). See `Docs/donor-library.md`.
+- Phase 2 - `UltimateWardrobe.DonorLibrary` implements `IDonorClassifier` with graduated classification (branch 1 - the Phase 1 pipeline over donor plugins with reference-master enrichment; branch 2 - mesh/texture heuristics; branch 3 - BodySlide/physics detection + `DonorAssetKind`) plus the `DonorLibraryService` import/remove/reclassify flow with the cross-project guard. Sprint 2.5 froze the `DonorAsset` shape under a four-archetype synthetic golden suite (regens via `UW_WRITE_GOLDENS=1`) and an Integration-gated real-donor suite. See `Docs/donor-library.md`.

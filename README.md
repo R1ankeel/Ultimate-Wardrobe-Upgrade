@@ -102,7 +102,7 @@ Standalone application for building full visual replacers for Skyrim SE armor an
   - Sprint 2.2 mesh/texture heuristics (branch 2) - done (`MeshPathIndexer` recursive `meshes/**/*.nif` + `textures/**/*.dds` globbing over root + `Data/` layouts; `DonorNameHeuristics` piece/gender/weight from stems + paths with `_0/_1/_1st` normalization and `_1 > _0 > _1st` primary-file preference; `MeshSetAssembler` ProvidedSets from mesh groups with TXST-like texture linkage - esp-less donors now classify; 407 tests green)
   - Sprint 2.3 BodySlide/physics detection + Kind (branch 3) - done (`BodySlideDetector` SliderSets `*.osp` + SliderGroups `*.xml` + BodySlide-root `.xml`; `PhysicsDetector` hdtSMP/cbpc/physics tokens, `SKSE/Plugins` configs + `.tri` under detected mesh sets; `DonorKindDetector` FullReplacer/BodyConversionPatch/PhysicsPatch/Unknown with flags independent of Kind; branch 3 runs for every classification; 434 tests green)
   - Sprint 2.4 `DonorLibraryService` import flow - done (`DonorLibraryService` wired to the real archive extractor: `ImportAsync` extract -> classify -> merge identity -> guard -> append with failure cleanup, `RemoveAsync` deletes the extracted folder, `ReclassifyAsync` re-runs an existing folder with an optional reference-carrying `catalogHint`; cross-project guard rejects an archive owned by this or another library via `DonorAlreadyOwnedException`; 441 tests green)
-  - Sprint 2.5 tests + goldens + real-donor integration + docs - pending
+  - Sprint 2.5 tests + goldens + real-donor integration + docs - done (four-archetype `SyntheticDonorUniverse` with fixed Guids; committed `tests/TestData/DonorGolden/*-donor.json` golden snapshots regenerated via `UW_WRITE_GOLDENS=1` and deep-equal-compared; `RealDonorIntegrationTests` Integration-gated with auto-skip + loose asserts + branch-2 esp-less gate - branch-2 fixture is genuinely esp-less (`Red Hood - HIMBO`), and the Execution Log records the real-donor probe findings incl. that 'EBONWRAITH/Gryphon Knight' carry no detectable physics; full suite 455 tests green, Release 0 warnings/0 errors)
 
 ## Stack
 
@@ -142,10 +142,10 @@ dotnet test
 - `Docs/domain-model.md` - domain model (Sprint 0.1 - done)
 - `Docs/archive-layer.md` - archive layer (Sprint 0.2 - done)
 - `Docs/scanner.md` - folder catalog scanner, grouping + gender/weight variants, catalog + cache, logging/report, committed goldens + integration gates (Sprint 1.7 - done)
-- `Docs/donor-library.md` - donor import + graduated classification, plugin probe, branch-1 pipeline + reference-master merge, branch-2 mesh/texture heuristics, branch-3 BodySlide/physics + kind, `DonorLibraryService` import/remove/reclassify + cross-project guard (Phase 2, Sprints 2.0-2.4 - done)
+- `Docs/donor-library.md` - donor import + graduated classification, plugin probe, branch-1 pipeline + reference-master merge, branch-2 mesh/texture heuristics, branch-3 BodySlide/physics + kind, `DonorLibraryService` import/remove/reclassify + cross-project guard, and the Sprint 2.5 test suite (synthetic goldens + real-donor integration) (Phase 2, Sprints 2.0-2.5 - done)
 
 ## Test Assets
 
 Real mod archives for manual integration testing are under `ModsForTests/` (gitignored outputs, never committed). Small synthetic goldens are under `tests/TestData/Archives/`; scanner goldens under `tests/TestData/Plugins/` + `tests/TestData/CatalogGolden/` (committed, regenerated via `UW_WRITE_GOLDENS=1`).
 
-Game ESMs for reference: `D:\Skymod\Stock Game` (read-only).
+Game ESMs for reference: `D:\Skymod\Stock Game` (read-only). Donor golden snapshots under `tests/TestData/DonorGolden/` (committed, regenerated via `UW_WRITE_GOLDENS=1`).
