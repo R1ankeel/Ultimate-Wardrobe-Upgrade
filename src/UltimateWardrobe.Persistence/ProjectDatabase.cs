@@ -75,16 +75,30 @@ public sealed class ProjectDatabase : IAsyncDisposable
         {
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             await ApplyPragmasAsync(connection, cancellationToken).ConfigureAwait(false);
+
+            var database = new ProjectDatabase(fullPath, connection);
+            // Emptiness is snapshotted BEFORE migration so a brand-new DB reads as empty (the
+            // bootstrap signal), even though M001 immediately builds the schema on the same open.
+            database.IsEmpty = await HasNoUserTablesAsync(connection, cancellationToken).ConfigureAwait(false);
+
+            // Sprint 4.1: run pending migrations (fresh DB -> M001_Initial; existing -> missing
+            // versions only; newer DB -> fail-fast). No-op when already current.
+            await Migrations.Migrator.CreateDefault()
+                .MigrateAsync(connection, fullPath, cancellationToken)
+                .ConfigureAwait(false);
+
+            return database;
+        }
+        catch (ProjectStoreException)
+        {
+            await connection.DisposeAsync().ConfigureAwait(false);
+            throw;
         }
         catch (SqliteException ex)
         {
             await connection.DisposeAsync().ConfigureAwait(false);
             throw new ProjectStoreException($"Unable to open project database '{fullPath}'.", ex);
         }
-
-        var database = new ProjectDatabase(fullPath, connection);
-        database.IsEmpty = await HasNoUserTablesAsync(connection, cancellationToken).ConfigureAwait(false);
-        return database;
     }
 
     /// <summary>Closes and disposes the owned connection.</summary>
