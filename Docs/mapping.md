@@ -1,6 +1,6 @@
 # Mapping: Manual Mapping + Patch Detection
 
-> Phase 3, Sprints 3.0-3.1 done - `src/UltimateWardrobe.Mapping` - manual mapping logic that binds a target `Piece` (from a Phase 1 `Catalog`) to a donor piece (from a Phase 2 `DonorAsset`) with optional body-conversion and physics patch layers, then derives `NeedsPatch`, per-set `ArmorSetStatus`, and Overhaul progress. Only `Core` is referenced (the `Catalog` and `DonorAsset` instances are passed in as arguments - no `Scanner`/`DonorLibrary` dependency). Sprints 3.2 (patch detection), 3.3 (status/progress), 3.4 (real-donor + docs) are pending in `Plans/phase3.md`.
+> Phase 3, Sprints 3.0-3.2 done - `src/UltimateWardrobe.Mapping` - manual mapping logic that binds a target `Piece` (from a Phase 1 `Catalog`) to a donor piece (from a Phase 2 `DonorAsset`) with optional body-conversion and physics patch layers, then derives `NeedsPatch`, per-set `ArmorSetStatus`, and Overhaul progress. Only `Core` is referenced (the `Catalog` and `DonorAsset` instances are passed in as arguments - no `Scanner`/`DonorLibrary` dependency). Sprints 3.3 (status/progress), 3.4 (real-donor + docs) are pending in `Plans/phase3.md`.
 
 ## Overview
 
@@ -24,7 +24,8 @@ The mapping is keyed by `PieceMapping.UniqueKey` = `$"{OverhaulId}:{TargetPieceE
 
 | File | Purpose |
 |------|---------|
-| `MappingService.cs` | The mapping API: `AssignDonor` / `AttachPatch` / `Unassign` / `DetachPatch` (3.1, implemented), `GetStatus` (3.2), `GetArmorSetStatus` / `GetOverhaulProgress` (3.3). The CRUD + validation layer is implemented and tested; the full patch-detection and status derivation land in Sprints 3.2-3.3. It is constructed for one project's `DonorLibrary` (used by `ValidateCrossProject`). |
+| `MappingService.cs` | The mapping API: `AssignDonor` / `AttachPatch` / `Unassign` / `DetachPatch` (3.1), `GetStatus` / `NeedFor` / `BodyMarkerFromPath` / `RecommendPatches` (3.2), `GetArmorSetStatus` / `GetOverhaulProgress` (3.3). CRUD/validation (3.1) and patch-detection (3.2) are implemented and tested; the full per-set status + progress arithmetic land in Sprint 3.3. It is constructed for one project's `DonorLibrary` (used by `ValidateCrossProject`). |
+| `PatchRequirement.cs` | `None / Body / Physics / Both` - the missing patch layer(s) feeding `GetStatus` and `RecommendPatches` (Sprint 3.2). |
 | `OverhaulProgress.cs` | Overhaul-level progress DTO (total, per-status counts, done fraction, remaining). |
 | `PatchKind.cs` | `Body / Physics` - which patch layer an attach/detach call targets. |
 | `tests/.../Mapping/SyntheticCatalogUniverse.cs` | Runtime-synthesized Iron catalog (Male + Female Heavy variants, cuirass + gauntlets each) - no files on disk. |
@@ -35,7 +36,10 @@ The mapping is keyed by `PieceMapping.UniqueKey` = `$"{OverhaulId}:{TargetPieceE
 - `AssignDonor(overhaul, catalog, donorAsset, targetPiece, donorPiece)` - create/set a `PieceMapping` (replaces by `UniqueKey`), resolve `DonorMeshPath`, re-derive status, `ValidateCrossProject`. (Sprint 3.1, implemented)
 - `AttachPatch(overhaul, mapping, patchAsset, PatchKind)` - set the body or physics layer, requiring `patchAsset.Kind` to match (3.1, implemented).
 - `Unassign(overhaul, mapping)` / `DetachPatch(overhaul, mapping, PatchKind)` - remove a mapping / clear one layer (3.1, implemented).
-- `GetStatus(mapping, donorAsset, patchAssetBody?, patchAssetPhysics?, policy) -> MappingStatus` (3.2).
+- `GetStatus(mapping, donorAsset, patchAssetBody?, patchAssetPhysics?, policy) -> MappingStatus` - `Pending` (null mapping) / `Mapped` / `NeedsPatch`, derived from `NeedFor`. (3.2, implemented)
+- `NeedFor(mapping, donorAsset, patchAssetBody?, patchAssetPhysics?, policy) -> PatchRequirement` - pure missing-layer detection. (3.2, implemented)
+- `BodyMarkerFromPath(donorMeshPath) -> BodyType?` - path-only body-token marker. (3.2, implemented)
+- `RecommendPatches(donorLibrary, requirement) -> IReadOnlyList<DonorAsset>` - candidates by matching `Kind`, deterministic order. (3.2, implemented)
 - `GetArmorSetStatus(catalogSet, mappings) -> ArmorSetStatus` - only the four stable values `NotStarted / InProgress / Mapped / NeedsPatch`; NEVER returns `Done` and takes no done-override (3.3).
 - `GetOverhaulProgress(mappings, catalog, doneOverrides) -> OverhaulProgress` (3.3).
 
@@ -60,22 +64,22 @@ The invariant `Done + InProgress + NeedsPatch + NotStarted == TotalSets` always 
 
 ## Patch detection (Sprint 3.2)
 
-`NeedFor(mapping, donorAsset, patchAssetBody?, patchAssetPhysics?, policy)` returns the missing layer(s). Flags are the **combined** flags of the main donor OR the attached per-layer patch asset:
+`NeedFor(mapping, donorAsset, patchAssetBody?, patchAssetPhysics?, policy)` returns the missing layer(s) as a `PatchRequirement` (`None / Body / Physics / Both`). Flags are the **combined** flags of the main donor OR the attached per-layer patch asset:
 
 - Body layer satisfied: main donor `DetectedBodySlideFiles` non-empty OR the attached body patch's `DetectedBodySlideFiles` non-empty.
 - Physics layer satisfied: main donor `DetectedPhysicsFiles` non-empty OR the attached physics patch's `DetectedPhysicsFiles` non-empty.
-- `Loose`: the OR above is the whole rule.
-- `RequireBodyConversion`: additionally demands the body layer when the donor set has a body piece and neither a BodySlide flag nor an explicit body-type marker in the donor mesh path is present.
+- `Loose`: the OR above is the whole rule, so no layer is ever demanded (the donor's own flags ARE the satisfaction) -> `None`.
+- `RequireBodyConversion`: additionally demands the body layer when the donor set has a body piece (a `32 ` slot) and neither a BodySlide flag nor an explicit body-type marker in the donor mesh path is present.
 - `RequirePhysics`: demands the physics layer when no physics flags are present.
 
 `BodyMarkerFromPath(donorMeshPath)` maps path tokens (case-insensitive) to `BodyType`: `3ba` -> ThreeBA (also `3baf`), `cbbe` -> CBBE, `bhunp` -> BHUNP, `himbo` -> HIMBO, `unp|unpb` -> BHUNP marker, `no token` -> null. It is the explicit, path-only form of roadmap 5.3 "mesh path implies the target body" - gated by the Sprint 3.4 real-donor spot-check and reducible to "BodySlide flag only" (a one-line table edit) if no real donor needs it.
 
-Patch recommendations: `RecommendPatches(donorLibrary, requirement)` returns candidate `DonorAsset`s of the matching `Kind`, sorted deterministically (`BodyConversionPatch` before `PhysicsPatch`, then by `ImportId`).
+Patch recommendations: `RecommendPatches(donorLibrary, requirement)` returns candidate `DonorAsset`s of the matching `Kind` (`Body`/`Both` -> `BodyConversionPatch`; `Physics`/`Both` -> `PhysicsPatch`), sorted deterministically (`BodyConversionPatch` before `PhysicsPatch`, then by `ImportId`). `None` -> empty.
 
 ## Status derivation (Sprint 3.3)
 
 ```
-MappingStatus: not assigned -> Pending; required layer missing -> NeedsPatch; else -> Mapped
+MappingStatus (implemented, Sprint 3.2): not assigned (null mapping) -> Pending; required layer missing -> NeedsPatch; else -> Mapped
 
 ArmorSetStatus (per set, per gender):
   no piece mapped      -> NotStarted
@@ -90,4 +94,4 @@ ArmorSetStatus (per set, per gender):
 - No external data for `Category!=Integration`: the `Catalog` is `SyntheticCatalogUniverse` and donors are `DonorAsset` fixtures - the layer is pure over in-memory `Core` types.
 - Determinism: the service is a pure function of its inputs - same catalog + donor set + assign sequence yields the same statuses/progress.
 - Sprints 3.1-3.3 add the CRUD/validation, patch-detection, and status/progress suites; Sprint 3.4 adds the real-donor Integration spot-check (auto-skips without `ModsForTests/Armor`).
-- Current count (Sprint 3.1): 3 skeleton + 13 CRUD/validation tests = 16 Mapping tests; full suite 473 passing (was 460), 0 warnings / 0 errors on Release build.
+- Current count (Sprint 3.2): 3 skeleton + 13 CRUD + 12 patch-detection = 28 Mapping tests; full suite 485 passing (was 473), 0 warnings / 0 errors on Release build.

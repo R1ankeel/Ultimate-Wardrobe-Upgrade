@@ -18,8 +18,10 @@ namespace UltimateWardrobe.Mapping;
 /// <see cref="DonorLibrary.Assets"/> (replaces / removes are applied only AFTER validation, so a
 /// failing operation leaves no partial mapping). Sprint 3.1.
 ///
-/// Status derivation (<see cref="GetStatus"/>) and the full <see cref="GetArmorSetStatus"/> table
-/// land in Sprints 3.2 / 3.3; freshly assigned mappings are stamped <see cref="MappingStatus.Mapped"/>.
+/// Patch requirement detection (<see cref="NeedFor"/>, <see cref="BodyMarkerFromPath"/>) and the
+/// per-mapping status (<see cref="GetStatus"/>) land in Sprint 3.2; the full <see cref="GetArmorSetStatus"/>
+/// table + Overhaul progress arithmetic land in Sprint 3.3. Freshly assigned mappings are stamped
+/// <see cref="MappingStatus.Mapped"/>.
 /// </summary>
 public sealed class MappingService
 {
@@ -153,17 +155,111 @@ public sealed class MappingService
     }
 
     /// <summary>
-    /// Derives the <see cref="MappingStatus"/> for a single mapping from the donor's (or its
-    /// attached patch layer's) Phase 2 flags and the Overhaul policy. Sprint 3.2.
+    /// Detects the missing patch layer(s) for a mapping (Phase 3 plan 4.2). Pure - combines the
+    /// Phase 2 flags of the main donor OR the attached per-layer patch asset, then applies
+    /// <paramref name="policy"/>. Under <see cref="PatchPolicy.Loose"/> no layer is ever demanded
+    /// (the donor's own flags are the whole rule, and their presence IS the satisfaction, so nothing
+    /// is missing). Under <see cref="PatchPolicy.RequireBodyConversion"/> the body layer is demanded
+    /// when the piece's donor set has a body piece yet neither a BodySlide flag nor an explicit
+    /// body-type marker in the donor mesh path is present; under <see cref="PatchPolicy.RequirePhysics"/>
+    /// the physics layer is demanded when no physics flag is present. Sprint 3.2.
     /// </summary>
-    public MappingStatus GetStatus(
+    public PatchRequirement NeedFor(
         PieceMapping mapping,
         DonorAsset donorAsset,
         DonorAsset? patchAssetBody = null,
         DonorAsset? patchAssetPhysics = null,
         PatchPolicy policy = PatchPolicy.Loose)
     {
-        throw new NotImplementedException("GetStatus lands in Sprint 3.2.");
+        if (mapping is null) throw new ArgumentNullException(nameof(mapping));
+        if (donorAsset is null) throw new ArgumentNullException(nameof(donorAsset));
+
+        if (policy == PatchPolicy.Loose) return PatchRequirement.None;
+
+        var bodySatisfiedByFlags = donorAsset.DetectedBodySlideFiles.Count > 0
+            || (patchAssetBody?.DetectedBodySlideFiles.Count ?? 0) > 0;
+
+        var physicsSatisfiedByFlags = donorAsset.DetectedPhysicsFiles.Count > 0
+            || (patchAssetPhysics?.DetectedPhysicsFiles.Count ?? 0) > 0;
+
+        var needBody = false;
+        var needPhysics = false;
+
+        if (policy is PatchPolicy.RequireBodyConversion or PatchPolicy.RequireBoth)
+        {
+            var hasBodyPiece = DonorSetHasBodyPiece(donorAsset, mapping.DonorPieceEditorId);
+            var hasBodyMarker = BodyMarkerFromPath(mapping.DonorMeshPath) != null;
+            if (hasBodyPiece && !bodySatisfiedByFlags && !hasBodyMarker)
+            {
+                needBody = true;
+            }
+        }
+
+        if (policy is PatchPolicy.RequirePhysics or PatchPolicy.RequireBoth)
+        {
+            needPhysics = !physicsSatisfiedByFlags;
+        }
+
+        return needBody switch
+        {
+            true when needPhysics => PatchRequirement.Both,
+            true => PatchRequirement.Body,
+            _ when needPhysics => PatchRequirement.Physics,
+            _ => PatchRequirement.None
+        };
+    }
+
+    /// <summary>
+    /// Derives the <see cref="MappingStatus"/> for a single mapping. An unassigned piece (null
+    /// <paramref name="mapping"/>) is <see cref="MappingStatus.Pending"/>; otherwise the status is
+    /// <see cref="MappingStatus.Mapped"/> when <see cref="NeedFor"/> reports no missing layer and
+    /// <see cref="MappingStatus.NeedsPatch"/> when it does. Sprint 3.2.
+    /// </summary>
+    public MappingStatus GetStatus(
+        PieceMapping? mapping,
+        DonorAsset donorAsset,
+        DonorAsset? patchAssetBody = null,
+        DonorAsset? patchAssetPhysics = null,
+        PatchPolicy policy = PatchPolicy.Loose)
+    {
+        if (mapping is null) return MappingStatus.Pending;
+        if (donorAsset is null) throw new ArgumentNullException(nameof(donorAsset));
+
+        var requirement = NeedFor(mapping, donorAsset, patchAssetBody, patchAssetPhysics, policy);
+        return requirement == PatchRequirement.None
+            ? MappingStatus.Mapped
+            : MappingStatus.NeedsPatch;
+    }
+
+    /// <summary>
+    /// Recommends candidate patch <see cref="DonorAsset"/>s for a required layer(s): assets whose
+    /// <see cref="DonorAsset.Kind"/> matches the demanded layer. Deterministic order -
+    /// <see cref="DonorAssetKind.BodyConversionPatch"/> before <see cref="DonorAssetKind.PhysicsPatch"/>,
+    /// then by <see cref="DonorAsset.ImportId"/>. <see cref="PatchRequirement.None"/> yields an empty list.
+    /// Sprint 3.2.
+    /// </summary>
+    public IReadOnlyList<DonorAsset> RecommendPatches(DonorLibrary donorLibrary, PatchRequirement requirement)
+    {
+        if (donorLibrary is null) throw new ArgumentNullException(nameof(donorLibrary));
+
+        var wantBody = requirement is PatchRequirement.Body or PatchRequirement.Both;
+        var wantPhysics = requirement is PatchRequirement.Physics or PatchRequirement.Both;
+
+        var candidates = new List<DonorAsset>();
+        if (wantBody)
+        {
+            candidates.AddRange(donorLibrary.Assets.Where(a => a.Kind == DonorAssetKind.BodyConversionPatch));
+        }
+
+        if (wantPhysics)
+        {
+            candidates.AddRange(donorLibrary.Assets.Where(a => a.Kind == DonorAssetKind.PhysicsPatch));
+        }
+
+        return candidates
+            .OrderBy(a => a.Kind)
+            .ThenBy(a => a.ImportId)
+            .ToList();
     }
 
     /// <summary>
@@ -311,4 +407,61 @@ public sealed class MappingService
 
         overhaul.Mappings[index] = newMapping;
     }
+
+    /// <summary>
+    /// An explicit, path-only body-type marker (Phase 3 plan 4.2, roadmap 5.3): scans the path
+    /// tokens (split on <c>/ \ .</c>) and returns the matched <see cref="BodyType"/> when a token
+    /// equals, begins with, or contains one of the frozen body-token words (case-insensitive):
+    /// <c>3ba</c> (also <c>3baf</c>) -> ThreeBA, <c>cbbe</c> -> CBBE, <c>bhunp</c> -> BHUNP,
+    /// <c>himbo</c> -> HIMBO, <c>unp|unpb</c> -> BHUNP. No token -> null. Sprint 3.2.
+    /// </summary>
+    public static BodyType? BodyMarkerFromPath(string? donorMeshPath)
+    {
+        if (string.IsNullOrWhiteSpace(donorMeshPath)) return null;
+
+        var tokens = donorMeshPath.Split(new[] { '/', '\\', '.' }, StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (var rule in BodyMarkerRules)
+        {
+            foreach (var token in tokens)
+            {
+                foreach (var word in rule.Words)
+                {
+                    if (token.Contains(word, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return rule.Type;
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static bool DonorSetHasBodyPiece(DonorAsset donorAsset, string donorPieceEditorId)
+    {
+        foreach (var set in donorAsset.ProvidedSets)
+        {
+            var containsPiece = set.Variants.Any(v => v.Pieces.Any(p => p.EditorId == donorPieceEditorId));
+            if (containsPiece)
+            {
+                return set.Variants.Any(v => v.Pieces.Any(p => IsBodySlot(p.Slot)));
+            }
+        }
+
+        // No provided set matched the donor piece; fall back to a body check across all provided pieces.
+        return donorAsset.ProvidedSets.Any(s => s.Variants.Any(v => v.Pieces.Any(p => IsBodySlot(p.Slot))));
+    }
+
+    private static bool IsBodySlot(string slot)
+        => slot.StartsWith("32", StringComparison.Ordinal);
+
+    private static readonly (BodyType Type, string[] Words)[] BodyMarkerRules =
+    {
+        (BodyType.ThreeBA, new[] { "3ba" }),
+        (BodyType.CBBE, new[] { "cbbe" }),
+        (BodyType.BHUNP, new[] { "bhunp" }),
+        (BodyType.HIMBO, new[] { "himbo" }),
+        (BodyType.BHUNP, new[] { "unp", "unpb" }),
+    };
 }
