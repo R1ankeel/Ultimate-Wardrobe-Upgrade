@@ -1,6 +1,6 @@
 # App - WPF Shell
 
-> Phase 6 (Sprints 6.1-6.4 done) - `src/UltimateWardrobe.App` is the WPF desktop shell. `net10.0-windows`, `UseWPF=true`, CommunityToolkit.Mvvm ViewModels, WPF-UI 4.3.0 Fluent shell, Microsoft.Extensions.Hosting composition root, Serilog logging. This doc records the composition/host lifecycle, the startup gate, the WPF-UI 4.3.0 service wiring, the Sprint 6.1 spike conclusions, the Sprint 6.2 project/overhaul management, the Sprint 6.3 donor library and the Sprint 6.4 mapping matrix grid.
+> Phase 6 (Sprints 6.1-6.5 done) - `src/UltimateWardrobe.App` is the WPF desktop shell. `net10.0-windows`, `UseWPF=true`, CommunityToolkit.Mvvm ViewModels, WPF-UI 4.3.0 Fluent shell, Microsoft.Extensions.Hosting composition root, Serilog logging. This doc records the composition/host lifecycle, the startup gate, the WPF-UI 4.3.0 service wiring, the Sprint 6.1 spike conclusions, the Sprint 6.2 project/overhaul management, the Sprint 6.3 donor library, the Sprint 6.4 mapping matrix grid and the Sprint 6.5 anchored-popover cell editor.
 
 ## Stack
 
@@ -91,6 +91,16 @@ The exact wiring is resolved against the shipped 4.3.0 API and verified by a hea
 - **Empty state.** A null/uncached catalog shows `IsEmpty` with the "run a scan first" hint.
 - **Virtualization.** Projection-shaped (rows are `IReadOnlyList`) and view-shaped (`VirtualizingStackPanel` row bands + horizontal cell `ItemsControl`, fixed header row + frozen set-name column). `MatrixCellViewModel.IsBlank` hides the cell card.
 
+## Anchored-popover cell editor (Sprint 6.5)
+
+`ArmorSetDetailViewModel` was rescoped from the 6.1 placeholder into the single-cell editor hosted by an anchored WPF `Popup` (amendment 8). It is a transient editor bound to exactly one (set, gender, weight) `Variant` of the owning `Overhaul` + its `PieceMapping`s:
+
+- **Open/close state machine (on `OverhaulViewModel`).** `Activate(cell)` resolves the variant directly from `cell.Set` (the matrix cell is blank - `Variant` null - for an unmapped variant, so it cannot be the source of truth) then calls `CellEditor.Open`; `IsEditorOpen` + `ActiveCell` drive the popover anchor. Activating the already-open cell toggles it closed; `CloseEditor`/`FlushAndCloseEditorAsync` clear the editor (per-cell create + dispose-on-close, one shared `CellEditor` instance reused across cells). `Refresh()` clears the editor; `RecomputeMatrix()` re-projects the grid without touching an open editor.
+- **Editor content.** One `PieceEditRowViewModel` per variant piece (EditorId, slot, target mesh); each row carries its current mapping, the derived `MappingStatus` (`GetStatus` over `_overhaul.Policy`), the compatible "load armor" donor options (`DonorCompatibility`: same gender/weight or a Unisex/Any variant; patch assets excluded), the `BodyConversionPatch`/`PhysicsPatch` dropdowns filtered by `DonorAssetKind` and offered only when the row reads `NeedsPatch` (`ShowPatchPanel`), and donor badges from `MappingService.BodyMarkerFromPath` + the donor's `DetectedBodySlideFiles`/`DetectedPhysicsFiles`.
+- **Mutation.** The Phase 3 command set is kept verbatim over `MappingService`: `AssignDonor` / `AttachBodyPatch` / `AttachPhysicsPatch` / `Unassign` / `DetachBodyPatch` / `DetachPhysicsPatch` / `SetNotes`. After each mutation the editor re-projects its rows + `SetStatus` and raises `Changed`.
+- **Live refresh + autosave.** `OverhaulViewModel` observes `CellEditor.Changed`: it calls `RecomputeMatrix()` (the grid card lines re-projects from `MappingService` results - no divergent state) and flushes `IProjectSession.Store.SaveAsync` (amendment 3 autosave) on every edit, with a guaranteed flush in `FlushAndCloseEditorAsync` when the popover closes.
+- **View host.** `OverhaulView` hosts one `Popup` (`Placement=Bottom`, `StaysOpen=false` for outside-click/focus-loss; `PlacementTarget` set from the clicked cell's `Button` in `MatrixCell_Click`; page `PreviewKeyDown` Esc closes). The editor panel is a single shared DataTemplate reused across cells; an "Import patch" button (`ImportPatch`) navigates to `DonorLibraryView`.
+
 Note: `DonorLibrary` is also a namespace name, so the `UltimateWardrobe.Core.Domain.DonorLibrary` type is fully qualified wherever the `UltimateWardrobe.DonorLibrary` namespace is imported.
 
 ## Screen / navigation map (roadmap 8.2, minus a shell project list)
@@ -102,13 +112,13 @@ App.OnStartup
 MainWindow (FluentWindow)
   NavigationView pane
     Project       - overhaul cards: name, progress, mapped/total, status + Add (Vanilla/StoryMod) + rename/delete/select (Sprint 6.2)
-    Overhaul      - mapping matrix grid (FEMALE/MALE ARMOR sections x weight columns, cell cards, search/status filter; popover editor in 6.5) (Sprint 6.4)
+    Overhaul      - mapping matrix grid (FEMALE/MALE ARMOR sections x weight columns, cell cards, search/status filter) + anchored-popover cell editor (Sprint 6.4 + 6.5)
     Donor library - donor table (Kind badge, sets, BodySlide/physics, date) + drag-and-drop import drop zone (Sprint 6.3)
     Export        - placeholder (Sprint 6.6: checklist + build + result)
   Status bar       busy spinner (IsBusy), latest ILogViewer line, Cancel, version in title
 ```
 
-The status bar is bound to `MainViewModel` (busy spinner visibility to `IsBusy`, live text to `StatusText` fed by `ILogViewer.LineAppended`, `CancelCommand`, version in `Title`). The Export screen is a placeholder until Sprint 6.6; the Project screen (overhaul cards) landed in Sprint 6.2, the Donor library screen in Sprint 6.3 and the Overhaul matrix in Sprint 6.4.
+The status bar is bound to `MainViewModel` (busy spinner visibility to `IsBusy`, live text to `StatusText` fed by `ILogViewer.LineAppended`, `CancelCommand`, version in `Title`). The Export screen is a placeholder until Sprint 6.6; the Project screen (overhaul cards) landed in Sprint 6.2, the Donor library screen in Sprint 6.3, the Overhaul matrix in Sprint 6.4 and the anchored-popover cell editor in Sprint 6.5.
 
 ## Settings layout
 
@@ -120,5 +130,4 @@ Repository-owned data lives under the user's Project root (`project.db`, `Source
 
 ## Screens still to come
 
-- Sprint 6.5 - `ArmorSetDetailViewModel` anchored-popover cell editor (anchored to the activated matrix cell).
 - Sprint 6.6 - `ExportViewModel` checklist + `IPatcher` invocation + result card + polish + manual E2E.

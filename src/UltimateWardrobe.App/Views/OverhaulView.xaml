@@ -126,6 +126,7 @@
                         <ItemsControl.ItemTemplate>
                           <DataTemplate DataType="{x:Type vm:MatrixCellViewModel}">
                             <Button Style="{StaticResource MatrixCellCard}"
+                                    Click="MatrixCell_Click"
                                     Visibility="{Binding IsBlank, Converter={StaticResource InverseBoolToVis}}"
                                     Command="{Binding DataContext.ActivateCellCommand, RelativeSource={RelativeSource AncestorType=Page}}"
                                     CommandParameter="{Binding}">
@@ -156,5 +157,127 @@
         </ItemsControl.ItemTemplate>
       </ItemsControl>
     </ScrollViewer>
+
+    <!-- Anchored single-cell editor popover (Phase 6 Sprint 6.5). PlacementTarget is set from the
+         clicked cell in code-behind; StaysOpen=false closes on outside click / focus loss; the VM
+         clears the editor on Esc (routeEvent handled in PreviewKeyDown). -->
+    <Popup x:Name="CellEditorPopup"
+           Placement="Bottom"
+           PlacementRectangle="0,0,8,8"
+           AllowsTransparency="True"
+           StaysOpen="False"
+           IsOpen="{Binding IsEditorOpen, Mode=OneWay}">
+      <Border Background="#FF202020"
+              BorderBrush="#33FFFFFF"
+              BorderThickness="1"
+              CornerRadius="6"
+              Padding="16"
+              MinWidth="380"
+              MaxWidth="560"
+              MaxHeight="620">
+        <StackPanel>
+          <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+            <TextBlock Text="{Binding CellEditor.Title}"
+                       FontWeight="SemiBold" FontSize="16" />
+            <TextBlock Text="{Binding CellEditor.SetStatus}"
+                       Margin="12,0,0,0"
+                       VerticalAlignment="Center"
+                       FontSize="12" Opacity="0.7" />
+            <Button Content="Import patch"
+                    Margin="Auto,0,0,0"
+                    Command="{Binding CellEditor.ImportPatchCommand}" />
+          </StackPanel>
+
+          <ItemsControl ItemsSource="{Binding CellEditor.Rows}" Grid.IsSharedSizeScope="True">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="{x:Type vm:PieceEditRowViewModel}">
+                <Border BorderBrush="#22FFFFFF" BorderThickness="0,0,0,1" Margin="0,6" Padding="0,6">
+                  <StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                      <StackPanel Width="150">
+                        <TextBlock Text="{Binding EditorId}" FontWeight="SemiBold" FontSize="12" />
+                        <TextBlock Text="{Binding Slot}" FontSize="11" Opacity="0.7" />
+                        <TextBlock Text="{Binding TargetMesh}" FontSize="11" Opacity="0.6" TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                      <StackPanel Width="120" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Status}" FontSize="11" />
+                        <TextBlock Text="{Binding DonorBodyMarkerText, StringFormat='Body: {0}'}" FontSize="11" Opacity="0.7" />
+                      </StackPanel>
+                      <StackPanel HorizontalAlignment="Right">
+                        <TextBlock Text="BodySlide" FontSize="10" Opacity="0.8"
+                                   Visibility="{Binding HasBodySlide, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock Text="Physics" FontSize="10" Opacity="0.8"
+                                   Visibility="{Binding HasPhysics, Converter={StaticResource BoolToVis}}" />
+                      </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                      <ComboBox ItemsSource="{Binding Donors}"
+                                SelectedItem="{Binding SelectedDonor}"
+                                DisplayMemberPath="DisplayName"
+                                MinWidth="200" />
+                      <Button Content="Assign"
+                              Margin="8,0,0,0"
+                              Command="{Binding DataContext.CellEditor.AssignDonorCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                              CommandParameter="{Binding}" />
+                      <Button Content="Unassign"
+                              Margin="8,0,0,0"
+                              Command="{Binding DataContext.CellEditor.UnassignCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                              CommandParameter="{Binding}" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0"
+                                Visibility="{Binding ShowPatchPanel, Converter={StaticResource BoolToVis}}">
+                      <StackPanel Margin="0,0,12,0">
+                        <TextBlock Text="Body conversion patch" FontSize="11" Opacity="0.7" />
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                          <ComboBox ItemsSource="{Binding BodyPatches}"
+                                    SelectedItem="{Binding SelectedBodyPatch}"
+                                    DisplayMemberPath="DisplayName"
+                                    MinWidth="180" />
+                          <Button Content="Attach" Margin="6,0,0,0"
+                                  Command="{Binding DataContext.CellEditor.AttachBodyPatchCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                  CommandParameter="{Binding}" />
+                          <Button Content="Detach" Margin="6,0,0,0"
+                                  Command="{Binding DataContext.CellEditor.DetachBodyPatchCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                  CommandParameter="{Binding}" />
+                        </StackPanel>
+                      </StackPanel>
+                      <StackPanel>
+                        <TextBlock Text="Physics patch" FontSize="11" Opacity="0.7" />
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                          <ComboBox ItemsSource="{Binding PhysicsPatches}"
+                                    SelectedItem="{Binding SelectedPhysicsPatch}"
+                                    DisplayMemberPath="DisplayName"
+                                    MinWidth="180" />
+                          <Button Content="Attach" Margin="6,0,0,0"
+                                  Command="{Binding DataContext.CellEditor.AttachPhysicsPatchCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                  CommandParameter="{Binding}" />
+                          <Button Content="Detach" Margin="6,0,0,0"
+                                  Command="{Binding DataContext.CellEditor.DetachPhysicsPatchCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                                  CommandParameter="{Binding}" />
+                        </StackPanel>
+                      </StackPanel>
+                    </StackPanel>
+
+                    <DockPanel Margin="0,8,0,0">
+                      <Button DockPanel.Dock="Right" Content="Save notes" Margin="8,0,0,0"
+                              Command="{Binding DataContext.CellEditor.SetNotesCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                              CommandParameter="{Binding}" />
+                      <TextBox Text="{Binding Notes, UpdateSourceTrigger=PropertyChanged}" MinHeight="20" />
+                    </DockPanel>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+    </Popup>
   </Grid>
 </Page>
