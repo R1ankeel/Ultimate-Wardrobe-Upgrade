@@ -14,8 +14,9 @@ public class MappingServiceSkeletonTests
     [Fact]
     public void Empty_Catalog_Gives_Zero_Progress()
     {
-        var service = new MappingService();
         var catalog = SyntheticCatalogUniverse.CreateIronCatalog();
+        var (project, _) = MappingFixtures.CreateOverhaulWithCatalog(catalog);
+        var service = new MappingService(project.Library);
         var emptyCatalog = new Catalog(catalog.Source, Array.Empty<ArmorSet>());
 
         var progress = service.GetOverhaulProgress(Array.Empty<PieceMapping>(), emptyCatalog);
@@ -33,8 +34,9 @@ public class MappingServiceSkeletonTests
     [Fact]
     public void Unmapped_Iron_Catalog_Is_All_NotStarted()
     {
-        var service = new MappingService();
         var catalog = SyntheticCatalogUniverse.CreateIronCatalog();
+        var (project, _) = MappingFixtures.CreateOverhaulWithCatalog(catalog);
+        var service = new MappingService(project.Library);
 
         var progress = service.GetOverhaulProgress(Array.Empty<PieceMapping>(), catalog);
 
@@ -51,8 +53,9 @@ public class MappingServiceSkeletonTests
     [Fact]
     public void GetArmorSetStatus_Without_Mappings_Is_NotStarted()
     {
-        var service = new MappingService();
         var catalog = SyntheticCatalogUniverse.CreateIronCatalog();
+        var (project, _) = MappingFixtures.CreateOverhaulWithCatalog(catalog);
+        var service = new MappingService(project.Library);
 
         var status = service.GetArmorSetStatus(catalog.Sets[0], Array.Empty<PieceMapping>());
 

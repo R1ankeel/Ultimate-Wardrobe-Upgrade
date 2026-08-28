@@ -105,6 +105,7 @@ Standalone application for building full visual replacers for Skyrim SE armor an
   - Sprint 2.5 tests + goldens + real-donor integration + docs - done (four-archetype `SyntheticDonorUniverse` with fixed Guids; committed `tests/TestData/DonorGolden/*-donor.json` golden snapshots regenerated via `UW_WRITE_GOLDENS=1` and deep-equal-compared; `RealDonorIntegrationTests` Integration-gated with auto-skip + loose asserts + branch-2 esp-less gate - branch-2 fixture is genuinely esp-less (`Red Hood - HIMBO`), and the Execution Log records the real-donor probe findings incl. that 'EBONWRAITH/Gryphon Knight' carry no detectable physics; full suite 455 tests green, Release 0 warnings/0 errors)
 - Phase 3 - Manual Mapping + Physics / BodySlide: in progress
   - Sprint 3.0 scaffolding + Core amendment + Mapping skeleton - done (`UltimateWardrobe.Mapping` project depending on `Core` only; Core amendment `PatchPolicy` enum (`Loose/RequireBodyConversion/RequirePhysics/RequireBoth`) + `Overhaul.Policy` init-default `Loose` (roadmap 5.3 target-body / patch demand); `MappingService` skeleton with the full API surface (`AssignDonor`/`AttachPatch`/`Unassign`/`DetachPatch`/`GetStatus`/`GetArmorSetStatus`/`GetOverhaulProgress`), `OverhaulProgress` DTO, `PatchKind`, and the empty/unmapped progress path implemented + tested (`Done` is a caller-side overlay, never a fifth derived status); `SyntheticCatalogUniverse` Iron set (Male + Female Heavy) + `MappingFixtures` (`CreateOverhaulWithCatalog`/`CreateDonorOutput`); full suite 460 tests green, Release 0 warnings/0 errors)
+  - Sprint 3.1 `MappingService` CRUD + validation - done (`AssignDonor`/`AttachPatch`/`Unassign`/`DetachPatch` end-to-end on in-memory data; `UniqueKey` uniqueness (second assign replaces, never duplicates); `ValidateCrossProject` on every write (donor or patch from another project rejected with no partial state); patch-`Kind` checks (patch as main donor rejected, full-replacer/physics-as-body rejected); stale-instance safety in attach/detach (rebuild from the in-list mapping by Id); per-gender mapping with two donors; full suite 473 tests green, Release 0 warnings/0 errors)
 
 ## Stack
 
@@ -124,7 +125,7 @@ UltimateWardrobe.slnx
 ├── src/UltimateWardrobe.Archives    # Archive extraction (native first)
 ├── src/UltimateWardrobe.Scanner     # Mutagen folder catalog scanner (Phase 1)
 ├── src/UltimateWardrobe.DonorLibrary# Donor import + classification (Phase 2, Sprints 2.0-2.5 done)
-├── src/UltimateWardrobe.Mapping     # Manual mapping + patch detection + status/progress (Phase 3, Sprint 3.0 scaffolding)
+├── src/UltimateWardrobe.Mapping     # Manual mapping + patch detection + status/progress (Phase 3, Sprints 3.0-3.1 done)
 └── tests/UltimateWardrobe.Tests     # xUnit + FluentAssertions
 ```
 
@@ -147,7 +148,7 @@ dotnet test
 - `Docs/archive-layer.md` - archive layer (Sprint 0.2 - done)
 - `Docs/scanner.md` - folder catalog scanner, grouping + gender/weight variants, catalog + cache, logging/report, committed goldens + integration gates (Sprint 1.7 - done)
 - `Docs/donor-library.md` - donor import + graduated classification, plugin probe, branch-1 pipeline + reference-master merge, branch-2 mesh/texture heuristics, branch-3 BodySlide/physics + kind, `DonorLibraryService` import/remove/reclassify + cross-project guard, and the Sprint 2.5 test suite (synthetic goldens + real-donor integration) (Phase 2, Sprints 2.0-2.5 - done)
-- `Docs/mapping.md` - manual mapping + patch detection + status/progress + `PatchPolicy` amendment (Phase 3, Sprint 3.0 scaffolding - done)
+- `Docs/mapping.md` - manual mapping + patch detection + status/progress + `PatchPolicy` amendment (Phase 3, Sprints 3.0-3.1 - done, 3.2-3.4 pending)
 
 ## Test Assets
 

@@ -11,17 +11,29 @@ namespace UltimateWardrobe.Mapping;
 /// donor <see cref="DonorLibrary"/>, and the <see cref="Catalog"/>) and passes them in. This project
 /// depends on <see cref="UltimateWardrobe.Core.Domain"/> only.
 ///
-/// Sprint 3.0 skeleton: the API surface exists; <see cref="GetArmorSetStatus"/> and
-/// <see cref="GetOverhaulProgress"/> are implemented for the trivial (empty / unmapped) case so the
-/// shape is testable. The CRUD (<see cref="AssignDonor"/>, <see cref="AttachPatch"/>,
-/// <see cref="Unassign"/>, <see cref="DetachPatch"/>) and the full status derivation land in
-/// Sprints 3.1 and 3.3.
+/// The service is constructed for one project's <see cref="DonorLibrary"/>; every mutating method
+/// (<see cref="AssignDonor"/>, <see cref="AttachPatch"/>, <see cref="Unassign"/>, <see cref="DetachPatch"/>)
+/// takes the owning <see cref="Overhaul"/> so it can commit the immutable <see cref="PieceMapping"/>
+/// into <see cref="Overhaul.Mappings"/> and enforce the cross-project invariant against
+/// <see cref="DonorLibrary.Assets"/> (replaces / removes are applied only AFTER validation, so a
+/// failing operation leaves no partial mapping). Sprint 3.1.
+///
+/// Status derivation (<see cref="GetStatus"/>) and the full <see cref="GetArmorSetStatus"/> table
+/// land in Sprints 3.2 / 3.3; freshly assigned mappings are stamped <see cref="MappingStatus.Mapped"/>.
 /// </summary>
 public sealed class MappingService
 {
+    private readonly DonorLibrary _library;
+
+    public MappingService(DonorLibrary donorLibrary)
+    {
+        _library = donorLibrary ?? throw new ArgumentNullException(nameof(donorLibrary));
+    }
+
     /// <summary>
-    /// Binds one target piece (per gender) to one donor piece. Replaces any existing mapping with
-    /// the same <see cref="PieceMapping.UniqueKey"/>. Sprint 3.1.
+    /// Binds one target piece (per gender) to one donor piece. Resolves <see cref="PieceMapping.DonorMeshPath"/>
+    /// from the donor piece, runs <see cref="PieceMapping.ValidateCrossProject"/> (donor must be in this
+    /// project's library), and replaces any existing mapping with the same <see cref="PieceMapping.UniqueKey"/>.
     /// </summary>
     public PieceMapping AssignDonor(
         Overhaul overhaul,
@@ -30,30 +42,114 @@ public sealed class MappingService
         Piece targetPiece,
         Piece donorPiece)
     {
-        throw new NotImplementedException("AssignDonor lands in Sprint 3.1.");
+        if (overhaul is null) throw new ArgumentNullException(nameof(overhaul));
+        if (catalog is null) throw new ArgumentNullException(nameof(catalog));
+        if (donorAsset is null) throw new ArgumentNullException(nameof(donorAsset));
+        if (targetPiece is null) throw new ArgumentNullException(nameof(targetPiece));
+        if (donorPiece is null) throw new ArgumentNullException(nameof(donorPiece));
+
+        var (setId, gender) = ResolveTargetContext(catalog, targetPiece);
+
+        if (donorAsset.Kind is DonorAssetKind.BodyConversionPatch or DonorAssetKind.PhysicsPatch)
+        {
+            throw new InvalidOperationException(
+                $"Donor asset {donorAsset.ImportId} is a patch ({donorAsset.Kind}) and cannot be used as the main donor.");
+        }
+
+        var meshPath = donorPiece.MeshPath ?? ""; // the PieceMapping ctor guards empty mesh path
+
+        var newMapping = new PieceMapping(
+            Guid.NewGuid(),
+            overhaul.Id,
+            setId,
+            targetPiece.EditorId,
+            gender,
+            donorAsset.ImportId,
+            donorPiece.EditorId,
+            meshPath,
+            status: MappingStatus.Mapped);
+
+        newMapping.ValidateCrossProject(_library.Assets);
+
+        overhaul.Mappings.RemoveAll(m => m.UniqueKey == newMapping.UniqueKey);
+        overhaul.Mappings.Add(newMapping);
+
+        return newMapping;
     }
 
     /// <summary>
-    /// Attaches a body-conversion or physics patch layer to a mapping. Sprint 3.1.
+    /// Attaches a body-conversion or physics patch layer to an assigned mapping. Enforces
+    /// <paramref name="patchAsset"/>.<c>Kind</c> matches the requested layer and the patch belongs to
+    /// this project's library (via <see cref="PieceMapping.ValidateCrossProject"/>); replaces the mapping
+    /// in the Overhaul so no partial state remains on failure.
     /// </summary>
     public void AttachPatch(
+        Overhaul overhaul,
         PieceMapping mapping,
         DonorAsset patchAsset,
         PatchKind patchKind)
     {
-        throw new NotImplementedException("AttachPatch lands in Sprint 3.1.");
+        if (overhaul is null) throw new ArgumentNullException(nameof(overhaul));
+        if (mapping is null) throw new ArgumentNullException(nameof(mapping));
+        if (patchAsset is null) throw new ArgumentNullException(nameof(patchAsset));
+
+        var expectedKind = RequireExpectedPatchKind(patchKind);
+        if (patchAsset.Kind != expectedKind)
+        {
+            throw new InvalidOperationException(
+                $"Patch asset {patchAsset.ImportId} has Kind {patchAsset.Kind}, expected {expectedKind} for a {patchKind} layer.");
+        }
+
+        // Rebuild from the authoritative in-list mapping (by Id), so a stale caller-held instance
+        // cannot clobber an already-attached layer.
+        var current = RequireCurrentMapping(overhaul, mapping);
+        var newMapping = patchKind switch
+        {
+            PatchKind.Body => Rebuild(current, patchAsset.ImportId, current.PhysicsPatchAssetId),
+            PatchKind.Physics => Rebuild(current, current.BodyConversionPatchAssetId, patchAsset.ImportId),
+            _ => throw new ArgumentOutOfRangeException(nameof(patchKind)),
+        };
+
+        newMapping.ValidateCrossProject(_library.Assets);
+
+        ReplaceInList(overhaul, newMapping);
     }
 
-    /// <summary>Removes a mapping. Sprint 3.1.</summary>
-    public void Unassign(PieceMapping mapping)
+    /// <summary>Removes an assigned mapping. Throws if the mapping is not part of the Overhaul.</summary>
+    public void Unassign(Overhaul overhaul, PieceMapping mapping)
     {
-        throw new NotImplementedException("Unassign lands in Sprint 3.1.");
+        if (overhaul is null) throw new ArgumentNullException(nameof(overhaul));
+        if (mapping is null) throw new ArgumentNullException(nameof(mapping));
+
+        var removed = overhaul.Mappings.RemoveAll(m => m.Id == mapping.Id);
+        if (removed == 0)
+        {
+            throw new InvalidOperationException($"Mapping {mapping.Id} is not part of Overhaul {overhaul.Id}.");
+        }
     }
 
-    /// <summary>Clears one patch layer (body or physics) of a mapping. Sprint 3.1.</summary>
-    public void DetachPatch(PieceMapping mapping, PatchKind patchKind)
+    /// <summary>Clears one patch layer (body or physics) of an assigned mapping.</summary>
+    public void DetachPatch(
+        Overhaul overhaul,
+        PieceMapping mapping,
+        PatchKind patchKind)
     {
-        throw new NotImplementedException("DetachPatch lands in Sprint 3.1.");
+        if (overhaul is null) throw new ArgumentNullException(nameof(overhaul));
+        if (mapping is null) throw new ArgumentNullException(nameof(mapping));
+
+        RequireExpectedPatchKind(patchKind);
+
+        var current = RequireCurrentMapping(overhaul, mapping);
+        var newMapping = patchKind switch
+        {
+            PatchKind.Body => Rebuild(current, null, current.PhysicsPatchAssetId),
+            PatchKind.Physics => Rebuild(current, current.BodyConversionPatchAssetId, null),
+            _ => throw new ArgumentOutOfRangeException(nameof(patchKind)),
+        };
+
+        newMapping.ValidateCrossProject(_library.Assets);
+
+        ReplaceInList(overhaul, newMapping);
     }
 
     /// <summary>
@@ -149,5 +245,70 @@ public sealed class MappingService
             NeedsPatch = needsPatch,
             Done = done
         };
+    }
+
+    private static (string SetId, Gender Gender) ResolveTargetContext(Catalog catalog, Piece targetPiece)
+    {
+        foreach (var set in catalog.Sets)
+        {
+            foreach (var variant in set.Variants)
+            {
+                if (variant.Pieces.Any(p => p.EditorId == targetPiece.EditorId))
+                {
+                    return (set.Id, variant.Gender);
+                }
+            }
+        }
+
+        throw new InvalidOperationException($"Target piece {targetPiece.EditorId} was not found in any catalog set.");
+    }
+
+    private static DonorAssetKind RequireExpectedPatchKind(PatchKind patchKind)
+    {
+        return patchKind switch
+        {
+            PatchKind.Body => DonorAssetKind.BodyConversionPatch,
+            PatchKind.Physics => DonorAssetKind.PhysicsPatch,
+            _ => throw new ArgumentOutOfRangeException(nameof(patchKind)),
+        };
+    }
+
+    private static PieceMapping Rebuild(PieceMapping source, Guid? bodyPatch, Guid? physicsPatch)
+    {
+        return new PieceMapping(
+            source.Id,
+            source.OverhaulId,
+            source.TargetArmorSetId,
+            source.TargetPieceEditorId,
+            source.TargetGender,
+            source.DonorAssetId,
+            source.DonorPieceEditorId,
+            source.DonorMeshPath,
+            bodyPatch,
+            physicsPatch,
+            source.Status,
+            source.Notes);
+    }
+
+    private static PieceMapping RequireCurrentMapping(Overhaul overhaul, PieceMapping mapping)
+    {
+        var index = overhaul.Mappings.FindIndex(m => m.Id == mapping.Id);
+        if (index < 0)
+        {
+            throw new InvalidOperationException($"Mapping {mapping.Id} is not part of Overhaul {overhaul.Id}.");
+        }
+
+        return overhaul.Mappings[index];
+    }
+
+    private static void ReplaceInList(Overhaul overhaul, PieceMapping newMapping)
+    {
+        var index = overhaul.Mappings.FindIndex(m => m.Id == newMapping.Id);
+        if (index < 0)
+        {
+            throw new InvalidOperationException($"Mapping {newMapping.Id} is not part of Overhaul {overhaul.Id}.");
+        }
+
+        overhaul.Mappings[index] = newMapping;
     }
 }

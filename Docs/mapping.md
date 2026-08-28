@@ -1,6 +1,6 @@
 # Mapping: Manual Mapping + Patch Detection
 
-> Phase 3, Sprint 3.0 scaffolding done - `src/UltimateWardrobe.Mapping` - manual mapping logic that binds a target `Piece` (from a Phase 1 `Catalog`) to a donor piece (from a Phase 2 `DonorAsset`) with optional body-conversion and physics patch layers, then derives `NeedsPatch`, per-set `ArmorSetStatus`, and Overhaul progress. Only `Core` is referenced (the `Catalog` and `DonorAsset` instances are passed in as arguments - no `Scanner`/`DonorLibrary` dependency). Sprints 3.1 (CRUD/validation), 3.2 (patch detection), 3.3 (status/progress), 3.4 (real-donor + docs) are pending in `Plans/phase3.md`.
+> Phase 3, Sprints 3.0-3.1 done - `src/UltimateWardrobe.Mapping` - manual mapping logic that binds a target `Piece` (from a Phase 1 `Catalog`) to a donor piece (from a Phase 2 `DonorAsset`) with optional body-conversion and physics patch layers, then derives `NeedsPatch`, per-set `ArmorSetStatus`, and Overhaul progress. Only `Core` is referenced (the `Catalog` and `DonorAsset` instances are passed in as arguments - no `Scanner`/`DonorLibrary` dependency). Sprints 3.2 (patch detection), 3.3 (status/progress), 3.4 (real-donor + docs) are pending in `Plans/phase3.md`.
 
 ## Overview
 
@@ -14,7 +14,7 @@
     Status (MappingStatus)
 ```
 
-The mapping is keyed by `PieceMapping.UniqueKey` = `$"{OverhaulId}:{TargetPieceEditorId}:{TargetGender}"` - one active mapping per target piece per gender. `MappingService` (Sprint 3.0 skeleton; full API in Sprints 3.1-3.3) is logic only, no I/O: the caller owns the `Overhaul`, the project's `DonorLibrary`, and the `Catalog`.
+The mapping is keyed by `PieceMapping.UniqueKey` = `$"{OverhaulId}:{TargetPieceEditorId}:{TargetGender}"` - one active mapping per target piece per gender. `MappingService` (Sprints 3.0-3.1) is logic only, no I/O: the caller owns the `Overhaul`, the project's `DonorLibrary`, and the `Catalog`.
 
 ## Core amendment (Sprint 3.0.2)
 
@@ -24,7 +24,7 @@ The mapping is keyed by `PieceMapping.UniqueKey` = `$"{OverhaulId}:{TargetPieceE
 
 | File | Purpose |
 |------|---------|
-| `MappingService.cs` | The mapping API (Sprint 3.0 skeleton): `AssignDonor` / `AttachPatch` / `Unassign` / `DetachPatch` (3.1), `GetStatus` (3.2), `GetArmorSetStatus` / `GetOverhaulProgress` (3.3). Currently the CRUD and full derivation throw `NotImplementedException`; the empty / unmapped progress path is implemented and tested. |
+| `MappingService.cs` | The mapping API: `AssignDonor` / `AttachPatch` / `Unassign` / `DetachPatch` (3.1, implemented), `GetStatus` (3.2), `GetArmorSetStatus` / `GetOverhaulProgress` (3.3). The CRUD + validation layer is implemented and tested; the full patch-detection and status derivation land in Sprints 3.2-3.3. It is constructed for one project's `DonorLibrary` (used by `ValidateCrossProject`). |
 | `OverhaulProgress.cs` | Overhaul-level progress DTO (total, per-status counts, done fraction, remaining). |
 | `PatchKind.cs` | `Body / Physics` - which patch layer an attach/detach call targets. |
 | `tests/.../Mapping/SyntheticCatalogUniverse.cs` | Runtime-synthesized Iron catalog (Male + Female Heavy variants, cuirass + gauntlets each) - no files on disk. |
@@ -32,12 +32,20 @@ The mapping is keyed by `PieceMapping.UniqueKey` = `$"{OverhaulId}:{TargetPieceE
 
 ## MappingService API
 
-- `AssignDonor(overhaul, catalog, donorAsset, targetPiece, donorPiece)` - create/set a `PieceMapping` (replaces by `UniqueKey`), resolve `DonorMeshPath`, re-derive status, `ValidateCrossProject`. (Sprint 3.1)
-- `AttachPatch(mapping, patchAsset, PatchKind)` - set the body or physics layer, requiring `patchAsset.Kind` to match (3.1).
-- `Unassign(mapping)` / `DetachPatch(mapping, PatchKind)` - remove a mapping / clear one layer (3.1).
+- `AssignDonor(overhaul, catalog, donorAsset, targetPiece, donorPiece)` - create/set a `PieceMapping` (replaces by `UniqueKey`), resolve `DonorMeshPath`, re-derive status, `ValidateCrossProject`. (Sprint 3.1, implemented)
+- `AttachPatch(overhaul, mapping, patchAsset, PatchKind)` - set the body or physics layer, requiring `patchAsset.Kind` to match (3.1, implemented).
+- `Unassign(overhaul, mapping)` / `DetachPatch(overhaul, mapping, PatchKind)` - remove a mapping / clear one layer (3.1, implemented).
 - `GetStatus(mapping, donorAsset, patchAssetBody?, patchAssetPhysics?, policy) -> MappingStatus` (3.2).
 - `GetArmorSetStatus(catalogSet, mappings) -> ArmorSetStatus` - only the four stable values `NotStarted / InProgress / Mapped / NeedsPatch`; NEVER returns `Done` and takes no done-override (3.3).
 - `GetOverhaulProgress(mappings, catalog, doneOverrides) -> OverhaulProgress` (3.3).
+
+## CRUD + validation (Sprint 3.1)
+
+- **UniqueKey uniqueness** - `AssignDonor` replaces any mapping with the same `TargetPieceEditorId + TargetGender`, never duplicates.
+- **Same-project invariant** - every write runs `PieceMapping.ValidateCrossProject` against the project `DonorLibrary` the service was constructed with; a donor or patch from another project is rejected with no partial state.
+- **Kind checks** - a patch `Kind` cannot be assigned as the main donor; `AttachPatch` requires `patchAsset.Kind` to match the requested layer (a full replacer or a `PhysicsPatch` on a body request is rejected).
+- **Stale-instance safety** - `AttachPatch`/`DetachPatch` rebuild from the authoritative in-list mapping (by Id) rather than the caller-supplied instance, so attaching a second layer cannot clobber a previously attached one.
+- **Guards** - an empty donor mesh path throws `PieceMapping`'s ctor guard; an unknown target piece throws before any state changes.
 
 ## Done is an overlay, not a fifth status
 
@@ -82,4 +90,4 @@ ArmorSetStatus (per set, per gender):
 - No external data for `Category!=Integration`: the `Catalog` is `SyntheticCatalogUniverse` and donors are `DonorAsset` fixtures - the layer is pure over in-memory `Core` types.
 - Determinism: the service is a pure function of its inputs - same catalog + donor set + assign sequence yields the same statuses/progress.
 - Sprints 3.1-3.3 add the CRUD/validation, patch-detection, and status/progress suites; Sprint 3.4 adds the real-donor Integration spot-check (auto-skips without `ModsForTests/Armor`).
-- Current count (Sprint 3.0): 3 skeleton tests + 2 `Overhaul.Policy` tests; full suite 460 passing, 0 warnings / 0 errors on Release build.
+- Current count (Sprint 3.1): 3 skeleton + 13 CRUD/validation tests = 16 Mapping tests; full suite 473 passing (was 460), 0 warnings / 0 errors on Release build.

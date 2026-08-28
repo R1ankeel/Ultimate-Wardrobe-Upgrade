@@ -12,7 +12,7 @@ UltimateWardrobe.sln
 ├── src/UltimateWardrobe.Archives    # P/Invoke over 7z.dll / UnRAR64.dll, signature detection, recursion
 ├── src/UltimateWardrobe.Scanner     # Mutagen.Bethesda.Skyrim 0.54.4 folder catalog scanner (Sprint 1.2: plugin discovery + load order + record index + ARMO->ARMA->files correlation)
 ├── src/UltimateWardrobe.DonorLibrary# Phase 2 donor classification + service (branches 1-3 + import flow, Sprints 2.0-2.5 done)
-├── src/UltimateWardrobe.Mapping     # (Phase 3) manual mapping + patch detection + status/progress (Sprint 3.0 scaffolding done; Core 3.0.2 amendment: PatchPolicy + Overhaul.Policy)
+├── src/UltimateWardrobe.Mapping     # (Phase 3) manual mapping + patch detection + status/progress (Sprints 3.0-3.1 done - CRUD + validation; Core 3.0.2 amendment: PatchPolicy + Overhaul.Policy)
 ├── src/UltimateWardrobe.Persistence # (Phase 4) SQLite
 ├── src/UltimateWardrobe.Patcher     # (Phase 5) ESP patcher + file slicer
 ├── src/UltimateWardrobe.App         # (Phase 6) WPF
