@@ -155,6 +155,7 @@ public class ProjectViewModelTests
             scripts,
             scripted,
             new OverhaulSourceValidator(),
+            new OverhaulSelection(),
             new MappingService(project.Library));
 
         return new Host(session, store, vm, scripted, scripts);

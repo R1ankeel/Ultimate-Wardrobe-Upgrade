@@ -74,6 +74,7 @@ public sealed class ProjectViewModel : ObservableObject
     private readonly IAppNavigationService _navigation;
     private readonly IAppDialogService _dialogs;
     private readonly IOverhaulSourceValidator _validator;
+    private readonly IOverhaulSelection _overhaulSelection;
     private readonly MappingService _mapping;
     private readonly ILogger<ProjectViewModel> _logger;
     private bool _isBusy;
@@ -89,6 +90,7 @@ public sealed class ProjectViewModel : ObservableObject
         IAppNavigationService navigation,
         IAppDialogService dialogs,
         IOverhaulSourceValidator validator,
+        IOverhaulSelection overhaulSelection,
         MappingService mapping,
         ILogger<ProjectViewModel>? logger = null)
     {
@@ -96,6 +98,7 @@ public sealed class ProjectViewModel : ObservableObject
         _navigation = navigation ?? throw new ArgumentNullException(nameof(navigation));
         _dialogs = dialogs ?? throw new ArgumentNullException(nameof(dialogs));
         _validator = validator ?? throw new ArgumentNullException(nameof(validator));
+        _overhaulSelection = overhaulSelection ?? throw new ArgumentNullException(nameof(overhaulSelection));
         _mapping = mapping ?? throw new ArgumentNullException(nameof(mapping));
         _logger = logger ?? NullLogger<ProjectViewModel>.Instance;
     }
@@ -349,6 +352,7 @@ public sealed class ProjectViewModel : ObservableObject
         }
 
         _logger.LogInformation("Opening overhaul screen for '{Name}'.", card.Overhaul.Name);
+        _overhaulSelection.Select(card.Overhaul.Id);
         _navigation.Navigate(typeof(OverhaulView));
     }
 

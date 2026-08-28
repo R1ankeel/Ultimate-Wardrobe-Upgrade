@@ -1,6 +1,6 @@
 # App - WPF Shell
 
-> Phase 6 (Sprints 6.1 + 6.2 done) - `src/UltimateWardrobe.App` is the WPF desktop shell. `net10.0-windows`, `UseWPF=true`, CommunityToolkit.Mvvm ViewModels, WPF-UI 4.3.0 Fluent shell, Microsoft.Extensions.Hosting composition root, Serilog logging. This doc records the composition/host lifecycle, the startup gate, the WPF-UI 4.3.0 service wiring, the Sprint 6.1 spike conclusions and the Sprint 6.2 project/overhaul management.
+> Phase 6 (Sprints 6.1-6.4 done) - `src/UltimateWardrobe.App` is the WPF desktop shell. `net10.0-windows`, `UseWPF=true`, CommunityToolkit.Mvvm ViewModels, WPF-UI 4.3.0 Fluent shell, Microsoft.Extensions.Hosting composition root, Serilog logging. This doc records the composition/host lifecycle, the startup gate, the WPF-UI 4.3.0 service wiring, the Sprint 6.1 spike conclusions, the Sprint 6.2 project/overhaul management, the Sprint 6.3 donor library and the Sprint 6.4 mapping matrix grid.
 
 ## Stack
 
@@ -15,7 +15,7 @@
 The single composition root is shared by the real app and the headless tests. `registerUi=true` adds the WPF-UI-backed adapters and Views; `registerUi=false` (headless, amendment 2) registers no-op stubs at the adapter interfaces so every ViewModel and app service resolves with no WPF control ever constructed.
 
 Always registered:
-- App services: `ILogViewer`/`LogViewer`, `RecentProjectsStore`, `IProjectSession`/`ProjectSession`, `IProjectStoreFactory`/`ProjectStoreFactory`, `IOverhaulSourceValidator`/`OverhaulSourceValidator`, `IBackgroundTaskService`/`DispatcherBackgroundTaskService`.
+- App services: `ILogViewer`/`LogViewer`, `RecentProjectsStore`, `IProjectSession`/`ProjectSession`, `IProjectStoreFactory`/`ProjectStoreFactory`, `IOverhaulSourceValidator`/`OverhaulSourceValidator`, `IBackgroundTaskService`/`DispatcherBackgroundTaskService`, `IOverhaulSelection`/`OverhaulSelection`.
 - Domain services: `CompositeExtractor` / `IArchiveExtractor`, `FolderCatalogScanner`, `DonorClassifier`, `DonorImportService`, `DonorLibraryService`, `IPatcher`/`WardrobePatcher`, and `MappingService` (a factory that requires an open `IProjectSession` and constructs `new MappingService(session.Project.Library)`).
 - ViewModels: `ProjectListViewModel`, `MainViewModel`, `ProjectViewModel`, `OverhaulViewModel`, `ArmorSetDetailViewModel`, `DonorLibraryViewModel`, `ExportViewModel`.
 
@@ -78,6 +78,21 @@ The exact wiring is resolved against the shipped 4.3.0 API and verified by a hea
 
 `DonorLibraryView` (`DonorLibraryViewModel`) shows the open project's `DonorLibrary.Assets` as a table: original file name, Kind badge (roadmap 4.3), ProvidedSets count, BodySlide/physics indicators and import date, with per-row Remove / Reclassify / Set Kind commands. Import is a drop zone (`.7z` / `.zip` / `.rar`, multi-file, folders flattened) that runs the Phase 2 pipeline one archive at a time on `IBackgroundTaskService` through `IDonorImportRunner` with a per-file `ProgressBar` + cancel. A failed archive surfaces a typed alert and adds nothing (Phase 2 already cleaned up); a cancelled batch is silent. Every mutation autosaves through the shared `IProjectSession.Store`. The concrete sealed `DonorLibraryService` is injected directly (consistent with `ProjectViewModel` -> `MappingService`) and the per-file runner abstraction keeps the view model headless-testable.
 
+## Mapping matrix grid (Sprint 6.4)
+
+`OverhaulView` (`OverhaulViewModel`) is the per-Overhaul mapping matrix over `Overhaul.Catalog` sets (amendment 8). Because the page is recreated from DI on each navigation (via `AppNavigationViewPageProvider`), the selected Overhaul cannot live on the page: the App-layer singleton `IOverhaulSelection`/`OverhaulSelection` holds the `OverhaulId` - `ProjectViewModel.SelectOverhaul` sets it and `OverhaulViewModel` resolves the Overhaul from `_session.Project.Overhauls` by id.
+
+- **Sections and rows.** FEMALE ARMOR then MALE ARMOR; a set with a Female/Unisex variant appears under FEMALE, a Male/Unisex variant under MALE (catalog order kept inside). Rows are `IReadOnlyList` projections (`ArmorSetRowViewModel`), never an `ObservableCollection` matrix rebuild.
+- **Columns.** One `MatrixColumnViewModel` per distinct weight class present in the catalog (Heavy / Light / Clothing / n/a order); a missing weight class yields no column.
+- **Cells.** One `MatrixCellViewModel` per (set, gender, weight). A missing variant or an unmapped variant renders blank/empty (`IsBlank`); a mapped variant raises a card (`CellLineRole`): set name, one line per distinct base donor, then one per `BodyConversionPatch`/`PhysicsPatch` (mirrors the wireframe "ARMOR 1 / LOAD ARMOR / PATCH / PATCH").
+- **Status.** Set status via `MappingService.GetArmorSetStatus`; the header label via `GetOverhaulProgress`. A status filter (`StatusFilter`/`SelectedStatusOption`) highlights matching rows (`IsStatusMatch`).
+- **Search.** `SearchText` filters the row band in both sections case-insensitively; a section with no matching rows is dropped.
+- **Popover wiring (Sprint 6.5).** `CellAt(sectionIndex,rowIndex,columnIndex)` resolves a cell's coordinates and `Activate`/`ActivateCellCommand` feed `ActiveCell` - the anchored popover anchors to that cell.
+- **Empty state.** A null/uncached catalog shows `IsEmpty` with the "run a scan first" hint.
+- **Virtualization.** Projection-shaped (rows are `IReadOnlyList`) and view-shaped (`VirtualizingStackPanel` row bands + horizontal cell `ItemsControl`, fixed header row + frozen set-name column). `MatrixCellViewModel.IsBlank` hides the cell card.
+
+Note: `DonorLibrary` is also a namespace name, so the `UltimateWardrobe.Core.Domain.DonorLibrary` type is fully qualified wherever the `UltimateWardrobe.DonorLibrary` namespace is imported.
+
 ## Screen / navigation map (roadmap 8.2, minus a shell project list)
 
 ```
@@ -87,13 +102,13 @@ App.OnStartup
 MainWindow (FluentWindow)
   NavigationView pane
     Project       - overhaul cards: name, progress, mapped/total, status + Add (Vanilla/StoryMod) + rename/delete/select (Sprint 6.2)
-    Overhaul      - placeholder (Sprint 6.4/6.5: mapping matrix grid + popover)
+    Overhaul      - mapping matrix grid (FEMALE/MALE ARMOR sections x weight columns, cell cards, search/status filter; popover editor in 6.5) (Sprint 6.4)
     Donor library - donor table (Kind badge, sets, BodySlide/physics, date) + drag-and-drop import drop zone (Sprint 6.3)
     Export        - placeholder (Sprint 6.6: checklist + build + result)
   Status bar       busy spinner (IsBusy), latest ILogViewer line, Cancel, version in title
 ```
 
-The status bar is bound to `MainViewModel` (busy spinner visibility to `IsBusy`, live text to `StatusText` fed by `ILogViewer.LineAppended`, `CancelCommand`, version in `Title`). The Overhaul and Export screens are placeholders until Sprint 6.4/6.6; the Project screen (overhaul cards) landed in Sprint 6.2 and the Donor library screen in Sprint 6.3.
+The status bar is bound to `MainViewModel` (busy spinner visibility to `IsBusy`, live text to `StatusText` fed by `ILogViewer.LineAppended`, `CancelCommand`, version in `Title`). The Export screen is a placeholder until Sprint 6.6; the Project screen (overhaul cards) landed in Sprint 6.2, the Donor library screen in Sprint 6.3 and the Overhaul matrix in Sprint 6.4.
 
 ## Settings layout
 
@@ -101,10 +116,9 @@ Repository-owned data lives under the user's Project root (`project.db`, `Source
 
 ## MVVM conventions
 
-`ObservableObject` partial classes with `[ObservableProperty]` / `[RelayCommand]` / `[AsyncRelayCommand]`, `ObservableCollection<T>` for lists, `AsyncRelayCommand` + `CanExecute` as the "busy" guard. ViewModels depend only on App-layer interfaces (`IAppNavigationService`, `IAppDialogService`, `ISnackbarService`, `IBackgroundTaskService`, `IOverhaulSourceValidator`, `ILogViewer`, `IDonorImportRunner`) so they run headless in xUnit; the WPF-UI-backed implementations live in `Views/Infrastructure`. Concrete Phase 2 services (`MappingService`, `DonorLibraryService`) are injected directly.
+`ObservableObject` partial classes with `[ObservableProperty]` / `[RelayCommand]` / `[AsyncRelayCommand]`, `[ObservableProperty]` collections, `AsyncRelayCommand` + `CanExecute` as the "busy" guard. ViewModels depend only on App-layer interfaces (`IAppNavigationService`, `IAppDialogService`, `ISnackbarService`, `IBackgroundTaskService`, `IOverhaulSourceValidator`, `ILogViewer`, `IDonorImportRunner`, `IOverhaulSelection`) so they run headless in xUnit; the WPF-UI-backed implementations live in `Views/Infrastructure`. Concrete Phase 2 services (`MappingService`, `DonorLibraryService`) are injected directly. The matrix's read-only projections (`MatrixColumnViewModel`, `MatrixSectionViewModel`, `ArmorSetRowViewModel`, `MatrixCellViewModel`, `CellLineViewModel`) are immutable `IReadOnlyList` snapshots, refreshed whole on `Refresh()` - no per-cell observable rebuild.
 
 ## Screens still to come
 
-- Sprint 6.4 - `OverhaulViewModel` mapping matrix grid (FEMALE/MALE ARMOR section rows x weight columns, 2-D virtualization).
-- Sprint 6.5 - `ArmorSetDetailViewModel` anchored-popover cell editor.
+- Sprint 6.5 - `ArmorSetDetailViewModel` anchored-popover cell editor (anchored to the activated matrix cell).
 - Sprint 6.6 - `ExportViewModel` checklist + `IPatcher` invocation + result card + polish + manual E2E.

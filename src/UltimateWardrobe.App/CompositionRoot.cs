@@ -33,6 +33,7 @@ public static class CompositionRoot
         services.AddSingleton<ILogViewer, LogViewer>();
         services.AddSingleton<RecentProjectsStore>();
         services.AddSingleton<IProjectSession, ProjectSession>();
+        services.AddSingleton<IOverhaulSelection, OverhaulSelection>();
         services.AddSingleton<IProjectStoreFactory, ProjectStoreFactory>();
         services.AddSingleton<IOverhaulSourceValidator, OverhaulSourceValidator>();
         services.AddSingleton<IBackgroundTaskService, DispatcherBackgroundTaskService>();
