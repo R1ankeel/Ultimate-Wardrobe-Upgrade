@@ -30,8 +30,7 @@
       <ui:ListView ItemsSource="{Binding RecentProjects}"
                    SelectedItem="{Binding SelectedRecent}"
                    BorderThickness="0"
-                   Height="220"
-                   DisplayMemberPath="Name">
+                   Height="220">
         <ui:ListView.ItemTemplate>
           <DataTemplate>
             <StackPanel>
