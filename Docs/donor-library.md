@@ -1,6 +1,6 @@
 # Donor Library: Import + Classification
 
-> Phase 2, Sprints 2.0-2.3 done - `src/UltimateWardrobe.DonorLibrary` - graduated classification for extracted donor folders: branch 1 runs the Phase 1 scanner pipeline over donor plugins (optionally enriched with reference game esms), branch 2 classifies mesh/texture replacers from paths alone, branch 3 detects BodySlide/physics artifacts and derives `DonorAssetKind`.
+> Phase 2, Sprints 2.0-2.4 done - `src/UltimateWardrobe.DonorLibrary` - graduated classification for extracted donor folders (branch 1 runs the Phase 1 scanner pipeline over donor plugins, optionally enriched with reference game esms; branch 2 classifies mesh/texture replacers from paths alone; branch 3 detects BodySlide/physics artifacts and derives `DonorAssetKind`) plus the end-to-end `DonorLibraryService` import/remove/reclassify flow wired to the real archive extractor (Sprint 2.4).
 
 ## Overview
 
@@ -14,10 +14,10 @@ The code reuses Phase 0.1/0.2 (`UltimateWardrobe.Archives` - extraction, `_meta.
 User drops an archive
   -> Archives.DonorImportService.ImportAsync(archivePath, projectRoot)   # extract + SHA-256 + manifest (entries with sizes) + _meta.json
   -> DonorClassifier.ClassifyAsync(asset.ExtractedPath, catalogHint)     # graduated 3-branch classification
-  -> DonorLibraryService adds the merged DonorAsset to Project.DonorLibrary.Assets   # lands in Sprint 2.4
+  -> DonorLibraryService.ImportAsync merges identity + classification and appends to Project.DonorLibrary.Assets
 ```
 
-`IDonorClassifier` is an "extracted folder" adapter: it builds a `DonorAsset` purely from the folder. The classifier fabricates a documented placeholder archive hash (`classification-pending`) because `DonorAsset` forbids an empty `ArchiveHash`; `DonorLibraryService` (Sprint 2.4) merges the real archive identity (file name, hash, timestamps) on top of the classification result.
+`IDonorClassifier` is an "extracted folder" adapter: it builds a `DonorAsset` purely from the folder. The classifier fabricates a documented placeholder archive hash (`classification-pending`) because `DonorAsset` forbids an empty `ArchiveHash`; `DonorLibraryService` (Sprint 2.4) merges the real archive identity (file name, hash, timestamps, extracted path) on top of the classification result.
 
 ## Components
 
@@ -33,7 +33,7 @@ User drops an archive
 | `BodySlideDetector.cs` | Branch 3: `CalienteTools/BodySlide` globbing - SliderSets `*.osp`, SliderGroups `*.xml`, root `.xml` (Sprint 2.3) |
 | `PhysicsDetector.cs` | Branch 3: hdt/cbpc/physics/tri globbing + `SKSE/Plugins` configs (Sprint 2.3) |
 | `DonorKindDetector.cs` | Branch 3: `FullReplacer | BodyConversionPatch | PhysicsPatch | Unknown` (Sprint 2.3) |
-| `DonorLibraryService.cs` | `ImportAsync` / `RemoveAsync` / `ReclassifyAsync`, project guard (Sprint 2.4, not yet present) |
+| `DonorLibraryService.cs` | End-to-end flow (Sprint 2.4): `ImportAsync` / `RemoveAsync` / `ReclassifyAsync`, cross-project guard |
 
 ## Branch routing (DonorClassifier)
 
@@ -170,6 +170,34 @@ else                                                    -> Unknown
 
 Flags are independent of `Kind`: a `FullReplacer` may carry BodySlide/physics flags - only `Kind` picks the primary lane. The "body piece" rule is the discriminator between a genuine mesh-only body/armor replacer and a stray model resource: a branch-2 set qualifies only when at least one piece covers the body/torso (`Body`/`Skin`/`Cuirass`/`Armor`/`Clothes`/`Robe`/`Robes`/`Dress`). Recalibration point: real-donor tuning in Sprint 2.5.
 
+## Sprint 2.4 - DonorLibrary service + import flow
+
+`DonorLibraryService` (`src/UltimateWardrobe.DonorLibrary/DonorLibraryService.cs`) wires the real archive extractor to graduated classification and maintains the `DonorLibrary.Assets` list inside a project.
+
+### ImportAsync (2.4.1)
+
+`ImportAsync(archivePath, projectRoot, library, catalogHint?, ct, otherLibraries?)`:
+
+1. `Archives.DonorImportService.ImportAsync` extracts to `Source/<ImportId>/` and returns the real archive identity (file name, SHA-256 hash, timestamps, manifest, `_meta.json`).
+2. Cross-project guard (2.4.4) rejects an archive whose hash is already owned by this library or any `otherLibraries` - `DonorAlreadyOwnedException` (Phase 0.2 invariant).
+3. `DonorClassifier.ClassifyAsync(ExtractedPath, catalogHint)` produces the classification (Kind, ProvidedSets, Detected*, manifest).
+4. `MergeIdentity` keeps the real archive identity and overlays the classification result - the classifier's placeholder `classification-pending` hash and folder-derived identity never leak into the stored asset.
+5. Appends the merged `DonorAsset` to `library.Assets`.
+
+On any failure after extraction the service deletes the extracted `Source/<ImportId>/` folder (best-effort) so no orphan import folder remains.
+
+### RemoveAsync (2.4.2)
+
+`RemoveAsync(library, importId)` removes the matching asset from `library.Assets` and deletes its extracted folder (`DonorAsset.ExtractedPath`). A missing folder is tolerated. Synchronous (in-memory removal + local folder delete) but named to match the service contract.
+
+### ReclassifyAsync (2.4.3)
+
+`ReclassifyAsync(library, importId, catalogHint?, ct)` re-runs classification on the existing extracted folder, optionally with a new `catalogHint` (e.g. a reference root that appeared later), updates the asset in place, and preserves the archive identity fields (ImportId, OriginalFileName, ArchiveHash, ImportedAt, ExtractedPath). Missing asset or missing folder throw.
+
+### Cross-project guard (2.4.4)
+
+The guard keys on the archive SHA-256 hash: the same archive cannot belong to two projects. `otherLibraries` supplies the other projects' libraries so `ImportAsync` can reject an already-owned archive. A duplicate within the same library is rejected too.
+
 ## Determinism
 
 - Probe ordering, reference merge ordering, ARMO ordering (`ModKey.Name` ordinal, then `FormKey.ID`), and manifest ordering (ordinal by relative path) are all stable.
@@ -188,8 +216,9 @@ Flags are independent of `Kind`: a `FullReplacer` may carry BodySlide/physics fl
 - Sprint 2.1: 16 new tests (6 `DonorReferenceMasterMergerTests` + 9 `DonorScanPipelineTests` + 1 classifier-net) - self-contained donor classifies into the expected set with Male + Female Heavy variants and manifest coverage; keyword record inside a bundled fake master resolves; plugin with 0 ARMO falls through to branch 2; reference resolves a keyword without leaking reference armors; reference-dependent donor without a hint falls through; donor-bundled copy wins over a same-named reference; corrupt donor warns and falls through; corrupt reference warns and is skipped; pipeline reports donor/reference counts.
 - Sprint 2.2: 45 new tests (`MeshPathIndexerTests` 7, `DonorNameHeuristicsTests` 30, `DonorMeshAssemblerTests` 8) - indexer layout globbing/dedupe/empty; heuristics unit cases incl. gender precedence and weight substring+priority; branch-2 end-to-end: iron male/female kit family + texture linkage + slot order + `FormId 0`, clothes path from a `Data/` layout, unhelpful `meshes/zzzztexture` folder falls back to the `zzzztexture` key with an `Other` piece, LOD/_1st one-piece-with-preferred-path while alternates stay manifest-only, texture-only folder yields no sets without crashing, heavy-token weight class, mesh-only determinism (projected shape + manifest equality), and esp-fall-through classifies via branch 2. Helper `DonorMeshTreeBuilder` writes runtime files - no Mutagen for branch 2. The pre-2.2 `LooseFiles_NoPlugins_...` test (written when branch 2 did not exist) now asserts the `iron` set while keeping its manifest-size focus.
 - Sprint 2.3: 27 new tests (`BodySlideDetectorTests` 5, `PhysicsDetectorTests` 6, `DonorKindDetectorTests` 8, `DonorKindClassifierTests` 8) - the four archetypes classify to the expected Kind (bodySlide-only -> BodyConversionPatch, physics-only -> PhysicsPatch, meshes+esp -> FullReplacer, meshes+bodySlide -> FullReplacer WITH flag, empty -> Unknown); tri morphs flagged only under set mesh folders; Data-layout stripping; both-layout dedup; slider-wins-over-physics priority; branch-1 Ring-only set is FullReplacer while a branch-2 Ring-only mesh set falls to the flag kinds. Four pre-2.3 Kind assertions updated from `Unknown` to `FullReplacer` (branch-1 plugin, mesh-only iron kit, loose-file `iron` set); empty/texture-only/zero-ARMO cases keep `Unknown`.
-- Full suite 434/434 green (was 407, +27), Release 0 warnings/0 errors, no temp `UW_Donor_*` dirs, no `TestResults/`.
+- Sprint 2.4: 7 new `DonorLibraryServiceTests` - runtime-built `System.IO.Compression.ZipArchive` imported into a temp project root -> extracted `Source/<ImportId>/` + `_meta.json` + classified asset appended to the library (hash not the `classification-pending` placeholder); reclassify switches Kind from `Unknown` to `FullReplacer` when a reference-carrying hint (the `RefBase.esm` game root) appears, preserving the identity fields; remove deletes the files and the list entry; remove tolerates a missing folder; duplicate-library guard rejects an archive owned by another library (and within the same library); failed classification cleans up so no orphan `Source/<ImportId>/` subfolder remains.
+- Full suite 441/441 green (was 434, +7), Release 0 warnings/0 errors, no temp `UW_Donor_*` dirs, no `TestResults/`.
 
 ## Status
 
-Sprints 2.0-2.3 are complete: import-time manifest, plugin probe, branch-1 classification with optional reference enrichment, branch-2 mesh/texture heuristics (esp-less donors produce real `ProvidedSets`), branch-3 BodySlide/physics detection + `DonorAssetKind` derivation (flags independent of Kind), and deterministic classification for all folder shapes. The `DonorLibraryService` import flow, golden snapshots, real-donor integration tests, and the final docs pass land in Sprints 2.4-2.5.
+Sprints 2.0-2.4 are complete: import-time manifest, plugin probe, branch-1 classification with optional reference enrichment, branch-2 mesh/texture heuristics (esp-less donors produce real `ProvidedSets`), branch-3 BodySlide/physics detection + `DonorAssetKind` derivation (flags independent of Kind), deterministic classification for all folder shapes, and the end-to-end `DonorLibraryService` import/remove/reclassify flow with the cross-project guard and failure cleanup. Golden snapshots, real-donor integration tests, and the final docs pass land in Sprint 2.5.

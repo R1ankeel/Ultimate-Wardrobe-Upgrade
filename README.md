@@ -101,7 +101,8 @@ Standalone application for building full visual replacers for Skyrim SE armor an
   - Sprint 2.1 classify via plugin + reference-master merge - done (`ReferenceMasterMerger` merging reference game esms into the load set without leaking reference armor; `DonorScanPipeline` donor-only ARMO -> correlate -> group -> assemble -> `ProvidedSets`; fall-through to branch 2 when branch 1 yields 0 sets; corrupt plugins warn + skip; 362 tests green)
   - Sprint 2.2 mesh/texture heuristics (branch 2) - done (`MeshPathIndexer` recursive `meshes/**/*.nif` + `textures/**/*.dds` globbing over root + `Data/` layouts; `DonorNameHeuristics` piece/gender/weight from stems + paths with `_0/_1/_1st` normalization and `_1 > _0 > _1st` primary-file preference; `MeshSetAssembler` ProvidedSets from mesh groups with TXST-like texture linkage - esp-less donors now classify; 407 tests green)
   - Sprint 2.3 BodySlide/physics detection + Kind (branch 3) - done (`BodySlideDetector` SliderSets `*.osp` + SliderGroups `*.xml` + BodySlide-root `.xml`; `PhysicsDetector` hdtSMP/cbpc/physics tokens, `SKSE/Plugins` configs + `.tri` under detected mesh sets; `DonorKindDetector` FullReplacer/BodyConversionPatch/PhysicsPatch/Unknown with flags independent of Kind; branch 3 runs for every classification; 434 tests green)
-  - Sprint 2.4 `DonorLibraryService` import flow, 2.5 tests + goldens + real-donor integration + docs - pending
+  - Sprint 2.4 `DonorLibraryService` import flow - done (`DonorLibraryService` wired to the real archive extractor: `ImportAsync` extract -> classify -> merge identity -> guard -> append with failure cleanup, `RemoveAsync` deletes the extracted folder, `ReclassifyAsync` re-runs an existing folder with an optional reference-carrying `catalogHint`; cross-project guard rejects an archive owned by this or another library via `DonorAlreadyOwnedException`; 441 tests green)
+  - Sprint 2.5 tests + goldens + real-donor integration + docs - pending
 
 ## Stack
 
@@ -119,7 +120,7 @@ UltimateWardrobe.slnx
 ├── src/UltimateWardrobe.Core        # Domain model, no I/O
 ├── src/UltimateWardrobe.Archives    # Archive extraction (native first)
 ├── src/UltimateWardrobe.Scanner     # Mutagen folder catalog scanner (Phase 1)
-├── src/UltimateWardrobe.DonorLibrary# Donor import + classification (Phase 2, Sprints 2.0-2.3)
+├── src/UltimateWardrobe.DonorLibrary# Donor import + classification (Phase 2, Sprints 2.0-2.4)
 └── tests/UltimateWardrobe.Tests     # xUnit + FluentAssertions
 ```
 
@@ -141,7 +142,7 @@ dotnet test
 - `Docs/domain-model.md` - domain model (Sprint 0.1 - done)
 - `Docs/archive-layer.md` - archive layer (Sprint 0.2 - done)
 - `Docs/scanner.md` - folder catalog scanner, grouping + gender/weight variants, catalog + cache, logging/report, committed goldens + integration gates (Sprint 1.7 - done)
-- `Docs/donor-library.md` - donor import + graduated classification, plugin probe, branch-1 pipeline + reference-master merge, branch-2 mesh/texture heuristics, branch-3 BodySlide/physics + kind (Phase 2, Sprints 2.0-2.3 - done)
+- `Docs/donor-library.md` - donor import + graduated classification, plugin probe, branch-1 pipeline + reference-master merge, branch-2 mesh/texture heuristics, branch-3 BodySlide/physics + kind, `DonorLibraryService` import/remove/reclassify + cross-project guard (Phase 2, Sprints 2.0-2.4 - done)
 
 ## Test Assets
 
