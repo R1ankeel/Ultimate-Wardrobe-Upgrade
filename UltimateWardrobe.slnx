@@ -4,6 +4,7 @@
     <Project Path="src/UltimateWardrobe.Core/UltimateWardrobe.Core.csproj" />
     <Project Path="src/UltimateWardrobe.DonorLibrary/UltimateWardrobe.DonorLibrary.csproj" />
     <Project Path="src/UltimateWardrobe.Mapping/UltimateWardrobe.Mapping.csproj" />
+    <Project Path="src/UltimateWardrobe.Persistence/UltimateWardrobe.Persistence.csproj" />
     <Project Path="src/UltimateWardrobe.Scanner/UltimateWardrobe.Scanner.csproj" />
   </Folder>
   <Folder Name="/tests/">

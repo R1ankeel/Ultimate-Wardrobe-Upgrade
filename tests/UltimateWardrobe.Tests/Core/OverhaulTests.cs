@@ -69,4 +69,34 @@ public class OverhaulTests
         var act2 = () => new Overhaul(Guid.NewGuid(), "Name", Guid.Empty, source);
         act2.Should().Throw<ArgumentException>();
     }
+
+    [Fact]
+    public void Overhaul_CreatedAt_Defaults_To_UtcNow_And_ModifiedAt_Is_Null()
+    {
+        var project = Fixtures.CreateProject();
+        var source = Fixtures.CreateVanillaSource();
+        var before = DateTime.UtcNow.AddSeconds(-1);
+        var overhaul = new Overhaul(Guid.NewGuid(), "Vanilla", project.Id, source);
+        var after = DateTime.UtcNow.AddSeconds(1);
+
+        overhaul.CreatedAt.Should().BeAfter(before).And.BeBefore(after);
+        overhaul.ModifiedAt.Should().BeNull();
+    }
+
+    [Fact]
+    public void Overhaul_CreatedAt_And_ModifiedAt_Can_Be_Set_Via_Initializer()
+    {
+        var project = Fixtures.CreateProject();
+        var source = Fixtures.CreateVanillaSource();
+        var created = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        var modified = created.AddDays(1);
+        var overhaul = new Overhaul(Guid.NewGuid(), "Vanilla", project.Id, source)
+        {
+            CreatedAt = created,
+            ModifiedAt = modified,
+        };
+
+        overhaul.CreatedAt.Should().Be(created);
+        overhaul.ModifiedAt.Should().Be(modified);
+    }
 }
