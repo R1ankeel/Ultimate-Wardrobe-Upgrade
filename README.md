@@ -80,6 +80,22 @@ Adding support for projects such as Vigilant or Lordbound does not require funda
 
 Standalone application for building full visual replacers for Skyrim SE armor and clothing - without requiring connection to the user's real load order.
 
+## Running the GUI
+
+The WPF desktop app lives in `src/UltimateWardrobe.App` and is built by the solution. To launch it:
+
+```powershell
+dotnet run --project src/UltimateWardrobe.App -c Release
+```
+
+On startup a `ProjectPickerWindow` gate asks you to create or open ONE project (single project per process, amendment 7); pick or create a project, and the main shell opens. From there: Project home (overhaul cards + donor library) -> Overhaul (mapping matrix + cell editor) -> Export ("Собрать гардероб" builds the mod).
+
+Notes:
+- Requires .NET 10 SDK (`net10.0-windows`).
+- Real game files are read from `D:\Skymod\Stock Game` and test donor archives from `ModsForTests/Armor` (both read-only); a project with a Vanilla overhaul scans the installed game folder you point it at.
+- App-level settings (recent projects, last theme) live under `%LocalAppData%\UltimateWardrobe\`; project data (including `Export/` output) lives under the project root you pick.
+- The complete build + test gates: `dotnet build -c Release` (0 warnings / 0 errors) and `dotnet test` (676 green).
+
 ## Status
 
 - Phase 0 - Foundation: done
