@@ -7,11 +7,40 @@
                  xmlns:views="clr-namespace:UltimateWardrobe.App.Views"
                  mc:Ignorable="d"
                  Title="{Binding Title, FallbackValue=Ultimate Wardrobe}"
+                 Icon="{StaticResource AppIcon}"
                  Height="760" Width="1180"
                  MinHeight="560" MinWidth="900"
                  WindowStartupLocation="CenterScreen">
 
   <ui:FluentWindow.Resources>
+    <!-- App icon (Sprint 6.6 polish, roadmap 8.5): a simple wardrobe-door vector, resident at runtime. -->
+    <DrawingImage x:Key="AppIcon">
+      <DrawingImage.Drawing>
+        <DrawingGroup>
+          <GeometryDrawing Brush="#FF3D5C7A">
+            <GeometryDrawing.Geometry>
+              <RectangleGeometry Rect="0,0,16,16" RadiusX="1.5" RadiusY="1.5" />
+            </GeometryDrawing.Geometry>
+          </GeometryDrawing>
+          <GeometryDrawing Brush="#FFFFFFFF">
+            <GeometryDrawing.Geometry>
+              <GeometryGroup>
+                <RectangleGeometry Rect="3,2,1.5,12" RadiusX="0.6" RadiusY="0.6" />
+                <RectangleGeometry Rect="11.5,2,1.5,12" RadiusX="0.6" RadiusY="0.6" />
+              </GeometryGroup>
+            </GeometryDrawing.Geometry>
+          </GeometryDrawing>
+          <GeometryDrawing Brush="#FFE2BE5A">
+            <GeometryDrawing.Geometry>
+              <GeometryGroup>
+                <RectangleGeometry Rect="2,7.4,0.8,1.2" RadiusX="0.3" RadiusY="0.3" />
+                <RectangleGeometry Rect="13.2,7.4,0.8,1.2" RadiusX="0.3" RadiusY="0.3" />
+              </GeometryGroup>
+            </GeometryDrawing.Geometry>
+          </GeometryDrawing>
+        </DrawingGroup>
+      </DrawingImage.Drawing>
+    </DrawingImage>
     <BooleanToVisibilityConverter x:Key="BoolToVis" />
   </ui:FluentWindow.Resources>
 
@@ -53,6 +82,18 @@
           </ui:NavigationViewItem.Icon>
         </ui:NavigationViewItem>
       </ui:NavigationView.MenuItems>
+
+      <ui:NavigationView.FooterMenuItems>
+        <ui:NavigationViewItem>
+          <ui:NavigationViewItem.Icon>
+            <ui:SymbolIcon Symbol="DarkTheme24" />
+          </ui:NavigationViewItem.Icon>
+          <Button Content="{Binding ThemeLabel}"
+                  HorizontalAlignment="Stretch"
+                  HorizontalContentAlignment="Left"
+                  Command="{Binding ToggleThemeCommand}" />
+        </ui:NavigationViewItem>
+      </ui:NavigationView.FooterMenuItems>
     </ui:NavigationView>
 
     <Border Grid.Row="1"

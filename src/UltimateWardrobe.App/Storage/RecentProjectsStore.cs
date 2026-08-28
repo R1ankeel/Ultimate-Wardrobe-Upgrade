@@ -14,6 +14,9 @@ public sealed class RecentProjectsStore
 {
     private const int MaxEntries = 8;
 
+    public const string DarkTheme = "Dark";
+    public const string LightTheme = "Light";
+
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     private readonly string _settingsPath;
@@ -48,6 +51,49 @@ public sealed class RecentProjectsStore
         {
             return Array.Empty<string>();
         }
+    }
+
+    /// <summary>
+    /// Reads the persisted UI theme ("Dark" or "Light", sprint 6.6 polish). Degrades to "Dark"
+    /// when the key is absent (a settings file written before themes existed) or unreadable.
+    /// </summary>
+    public string GetThemeMode()
+    {
+        if (!File.Exists(_settingsPath))
+        {
+            return DarkTheme;
+        }
+
+        try
+        {
+            var settings = JsonSerializer.Deserialize<RecentSettings>(File.ReadAllText(_settingsPath), JsonOptions);
+            return string.Equals(settings?.Theme, LightTheme, StringComparison.OrdinalIgnoreCase) ? LightTheme : DarkTheme;
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        {
+            return DarkTheme;
+        }
+    }
+
+    /// <summary>Persists the UI theme preference ("Dark" or "Light", sprint 6.6 polish).</summary>
+    public void SetThemeMode(string theme)
+    {
+        if (string.IsNullOrWhiteSpace(theme))
+        {
+            throw new ArgumentException("Theme must not be empty.", nameof(theme));
+        }
+
+        var normalized = string.Equals(theme, LightTheme, StringComparison.OrdinalIgnoreCase) ? LightTheme : DarkTheme;
+        var entries = GetRecentProjectPaths();
+        var directory = Path.GetDirectoryName(_settingsPath);
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        File.WriteAllText(
+            _settingsPath,
+            JsonSerializer.Serialize(new RecentSettings { RecentProjects = entries.ToList(), Theme = normalized }, JsonOptions));
     }
 
     public void AddRecentProject(string projectDbPath)
@@ -104,5 +150,7 @@ public sealed class RecentProjectsStore
     private sealed class RecentSettings
     {
         public List<string> RecentProjects { get; set; } = new();
+
+        public string? Theme { get; set; }
     }
 }

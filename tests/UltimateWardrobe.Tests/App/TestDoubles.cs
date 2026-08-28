@@ -98,6 +98,93 @@ internal sealed class RecordingNavigation : IAppNavigationService
     public bool GoBack() => false;
 }
 
+/// <summary>Records every <see cref="ISnackbarService.Show"/> call for headless VM tests (Sprint 6.6).</summary>
+internal sealed class ScriptedSnackbarService : ISnackbarService
+{
+    public List<(string Title, string Message)> Shown { get; } = new();
+
+    public void Show(string title, string message)
+    {
+        Shown.Add((title, message));
+    }
+}
+
+/// <summary>
+/// Scriptable <see cref="IPatcher"/> for headless <see cref="ExportViewModel"/> tests (Sprint 6.6).
+/// The default <see cref="OnBuild"/> reports all five stages and returns a fabricated
+/// <see cref="PatchResult"/> with a report; tests can override it to force a cancel or a failure.
+/// </summary>
+internal sealed class ScriptedPatcher : IPatcher
+{
+    public Func<Overhaul, UltimateWardrobe.Core.Domain.DonorLibrary, string, IProgress<PatchProgress>?, CancellationToken, Task<PatchResult>> OnBuild =
+        static async (_, _, _, progress, _) =>
+        {
+            string[] stages = { "Resolve targets", "Prepare export folder", "Build esp plugin", "Copy donor files", "Write meta.ini" };
+            for (var i = 0; i < stages.Length; i++)
+            {
+                progress?.Report(new PatchProgress(stages[i], i + 1, stages.Length));
+                await Task.Yield();
+            }
+
+            return new PatchResult(@"C:\Export\UltimateWardrobe - Iron.esp", new[] { "meshes\\1.nif", "meshes\\2.nif" })
+            {
+                Report = new PatchReport
+                {
+                    TotalMappings = 3,
+                    ResolvedMappings = 3,
+                    SkippedMappings = 0,
+                    OverriddenRecords = 12,
+                    CopiedFiles = new[] { "meshes\\1.nif", "meshes\\2.nif" },
+                    CopiedBytes = 2048,
+                    Warnings = new[] { new PatchWarning("Donor mesh skipped.", "IronCuirassF") },
+                },
+            };
+        };
+
+    public List<string> OutputDirs { get; } = new();
+    public List<Overhaul> Overhauls { get; } = new();
+    public List<UltimateWardrobe.Core.Domain.DonorLibrary> Libraries { get; } = new();
+    public List<List<PatchProgress>> Reported { get; } = new();
+    public int CallCount { get; private set; }
+
+    public async Task<PatchResult> BuildAsync(
+        Overhaul overhaul,
+        UltimateWardrobe.Core.Domain.DonorLibrary donorLibrary,
+        string outputDir,
+        IProgress<PatchProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        CallCount++;
+        Overhauls.Add(overhaul);
+        Libraries.Add(donorLibrary);
+        OutputDirs.Add(outputDir);
+
+        Reported.Add(new List<PatchProgress>());
+        var recorder = new ProgressRecorder(progress, Reported);
+        var result = await OnBuild(overhaul, donorLibrary, outputDir, recorder, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        return result;
+    }
+
+    private sealed class ProgressRecorder : IProgress<PatchProgress>
+    {
+        private readonly IProgress<PatchProgress>? _inner;
+        private readonly List<List<PatchProgress>> _reported;
+
+        public ProgressRecorder(IProgress<PatchProgress>? inner, List<List<PatchProgress>> reported)
+        {
+            _inner = inner;
+            _reported = reported;
+        }
+
+        public void Report(PatchProgress value)
+        {
+            _reported[^1].Add(value);
+            _inner?.Report(value);
+        }
+    }
+}
+
 /// <summary>
 /// Scriptable <see cref="IDonorImportRunner"/> for headless <see cref="DonorLibraryViewModel"/> tests
 /// (Phase 6 Sprint 6.3). Records every batch plus the reported progress snapshots, and delegates the

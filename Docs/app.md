@@ -114,11 +114,11 @@ MainWindow (FluentWindow)
     Project       - overhaul cards: name, progress, mapped/total, status + Add (Vanilla/StoryMod) + rename/delete/select (Sprint 6.2)
     Overhaul      - mapping matrix grid (FEMALE/MALE ARMOR sections x weight columns, cell cards, search/status filter) + anchored-popover cell editor (Sprint 6.4 + 6.5)
     Donor library - donor table (Kind badge, sets, BodySlide/physics, date) + drag-and-drop import drop zone (Sprint 6.3)
-    Export        - placeholder (Sprint 6.6: checklist + build + result)
+    Export        - pre-export checklist (status chip counts + allow-partial switch) + "Собрать гардероб" -> IPatcher on a background task + PatchProgress stages + Cancel + result card + open-in-Explorer + re-export (Sprint 6.6)
   Status bar       busy spinner (IsBusy), latest ILogViewer line, Cancel, version in title
 ```
 
-The status bar is bound to `MainViewModel` (busy spinner visibility to `IsBusy`, live text to `StatusText` fed by `ILogViewer.LineAppended`, `CancelCommand`, version in `Title`). The Export screen is a placeholder until Sprint 6.6; the Project screen (overhaul cards) landed in Sprint 6.2, the Donor library screen in Sprint 6.3, the Overhaul matrix in Sprint 6.4 and the anchored-popover cell editor in Sprint 6.5.
+The status bar is bound to `MainViewModel` (busy spinner visibility to `IsBusy`, live text to `StatusText` fed by `ILogViewer.LineAppended`, `CancelCommand`, version in `Title`). The Project screen (overhaul cards) landed in Sprint 6.2, the Donor library screen in Sprint 6.3, the Overhaul matrix in Sprint 6.4, the anchored-popover cell editor in Sprint 6.5 and the Export screen in Sprint 6.6.
 
 ## Settings layout
 
@@ -126,8 +126,21 @@ Repository-owned data lives under the user's Project root (`project.db`, `Source
 
 ## MVVM conventions
 
-`ObservableObject` partial classes with `[ObservableProperty]` / `[RelayCommand]` / `[AsyncRelayCommand]`, `[ObservableProperty]` collections, `AsyncRelayCommand` + `CanExecute` as the "busy" guard. ViewModels depend only on App-layer interfaces (`IAppNavigationService`, `IAppDialogService`, `ISnackbarService`, `IBackgroundTaskService`, `IOverhaulSourceValidator`, `ILogViewer`, `IDonorImportRunner`, `IOverhaulSelection`) so they run headless in xUnit; the WPF-UI-backed implementations live in `Views/Infrastructure`. Concrete Phase 2 services (`MappingService`, `DonorLibraryService`) are injected directly. The matrix's read-only projections (`MatrixColumnViewModel`, `MatrixSectionViewModel`, `ArmorSetRowViewModel`, `MatrixCellViewModel`, `CellLineViewModel`) are immutable `IReadOnlyList` snapshots, refreshed whole on `Refresh()` - no per-cell observable rebuild.
+`ObservableObject` partial classes with `[ObservableProperty]` / `[RelayCommand]` / `[AsyncRelayCommand]`, `[ObservableProperty]` collections, `AsyncRelayCommand` + `CanExecute` as the "busy" guard. ViewModels depend only on App-layer interfaces (`IAppNavigationService`, `IAppDialogService`, `ISnackbarService`, `IBackgroundTaskService`, `IOverhaulSourceValidator`, `ILogViewer`, `IDonorImportRunner`, `IOverhaulSelection`, `IThemeService`) so they run headless in xUnit; the WPF-UI-backed implementations live in `Views/Infrastructure`. Concrete Phase 2 services (`MappingService`, `DonorLibraryService`) are injected directly. The matrix's read-only projections (`MatrixColumnViewModel`, `MatrixSectionViewModel`, `ArmorSetRowViewModel`, `MatrixCellViewModel`, `CellLineViewModel`) are immutable `IReadOnlyList` snapshots, refreshed whole on `Refresh()` - no per-cell observable rebuild.
+
+## Export screen (Sprint 6.6)
+
+`ExportViewModel` runs the EXISTING Phase 5 `IPatcher` (`WardrobePatcher`) unchanged - it never re-implements slicing/plugin-writing. State is built in `Refresh()` (called from `ExportView.Loaded`): an empty overhaul -> empty state; otherwise the pre-export checklist is rolled up from `MappingService.GetOverhaulProgress` into five status chip counts (`NotStarted` / `InProgress` / `NeedsPatch` / `Mapped` / `Done`), and `OutputFolder` defaults to `<Project.Root>/Export`. `AllowPartial` (a checkbox) switches between "require full Done" and "allow NeedsPatch + Done" gating.
+
+"Собрать гардероб" (`BuildCommand`, an `AsyncRelayCommand` gated by `CanBuild`) runs `WardrobePatcher.BuildAsync(current, project.Library, outputFolder, Progress<PatchProgress>, cts.Token)` on `IBackgroundTaskService` (headless-safe: the `PatchResult` is captured via a closure variable because `RunAsync` returns `Task`, not `Task<T>`). `PatchProgress` stages render into the progress bar (`CurrentStage`, `CompletedStages`/`TotalStages`, `ProgressPercent`); a `PatchException`/any failure surfaces an `IAppDialogService.AlertAsync`; `OperationCanceledException` -> "Export cancelled" snackbar; success fills the result card from `PatchResult`/`PatchReport` (mod folder, plugin path, overridden records, copied files/bytes, `CopiedFiles`/`CopiedBytes`, warnings `ItemsControl`). `OpenInExplorerCommand` opens the mod folder via `Process.Start` with `UseShellExecute`. After the first successful build the primary button relabels to "Re-export"; the Phase 5 `OutputFolder.ClearModDir` contract makes re-export clean (delete-then-rebuild). `OutputFolder.ModName` = `UltimateWardrobe - <sanitized>`. Paths render in a monospace (`Consolas`) `TextBox`.
+
+## Polish (Sprint 6.6)
+
+- **Dark/light theme toggle, persisted.** `MainViewModel` exposes `IsDarkTheme`, `ThemeLabel` ("Dark"/"Light") and `ToggleThemeCommand` via the App-layer `IThemeService` abstraction (`App/Infrastructure`). UI impl `WpfUiThemeService` calls `ApplicationThemeManager.Apply` and persists to `RecentProjectsStore.SetThemeMode` (a `Theme` field in the same `%LocalAppData%\UltimateWardrobe\settings.json`; `GetThemeMode` defaults Dark and degrades on corrupt); headless impl `NullThemeService` is in-memory. `MainWindow` renders the toggle in `FooterMenuItems` with a `DarkTheme24` symbol.
+- **Status glyph legend.** `OverhaulViewModel` exposes a static `StatusLegend` (`StatusLegendItem(Symbol, Label)`) - `CheckmarkCircle24` (Done), `GridDots24` (Mapped), `Warning24` (NeedsPatch), `Clock24` (InProgress), `Circle20` (NotStarted) - rendered in `OverhaulView`; the string->`SymbolRegular` conversion needs the `Views/StringToSymbolConverter` (`Enum.TryParse` with `Circle20` fallback) because `ui:SymbolIcon Symbol="{Binding Symbol}"` does not convert a string.
+- **App icon** (vector `DrawingImage` wardrobe-door `AppIcon` in `MainWindow` resources) + window title shows the app version.
+- **Empty states, monospace paths, keyboard navigation** throughout the export/overhaul surfaces.
 
 ## Screens still to come
 
-- Sprint 6.6 - `ExportViewModel` checklist + `IPatcher` invocation + result card + polish + manual E2E.
+None for Phase 6. Phase 7 targets story-mod (non-Vanilla) overhauls and Postbone/post-build facilities.

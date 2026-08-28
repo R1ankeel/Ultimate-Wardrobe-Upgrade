@@ -70,6 +70,7 @@ public static class CompositionRoot
             services.AddSingleton<IAppNavigationService, NullAppNavigationService>();
             services.AddSingleton<IAppDialogService, NullAppDialogService>();
             services.AddSingleton<ISnackbarService, NullSnackbarService>();
+            services.AddSingleton<IThemeService>(_ => new NullThemeService());
             return;
         }
 
@@ -81,6 +82,7 @@ public static class CompositionRoot
         services.AddSingleton<IAppNavigationService, AppNavigationService>();
         services.AddSingleton<IAppDialogService, WpfUiDialogService>();
         services.AddSingleton<ISnackbarService, WpfUiSnackbarService>();
+        services.AddSingleton<IThemeService, WpfUiThemeService>();
 
         services.AddTransient<MainWindow>();
         services.AddTransient<ProjectPickerWindow>();

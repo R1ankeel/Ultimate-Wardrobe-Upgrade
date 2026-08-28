@@ -113,4 +113,62 @@ public class RecentProjectsStoreTests
             TestHelpers.DeleteDirectoryRetry(dir);
         }
     }
+
+    [Fact]
+    public void Theme_defaults_to_dark_when_absent()
+    {
+        var dir = TestHelpers.NewTempDir("UW_Rec_");
+        try
+        {
+            var store = new RecentProjectsStore(Path.Combine(dir, "settings.json"));
+            store.GetThemeMode().Should().Be(RecentProjectsStore.DarkTheme);
+        }
+        finally
+        {
+            TestHelpers.DeleteDirectoryRetry(dir);
+        }
+    }
+
+    [Fact]
+    public void Theme_round_trips_and_persists()
+    {
+        var dir = TestHelpers.NewTempDir("UW_Rec_");
+        try
+        {
+            var settings = Path.Combine(dir, "settings.json");
+            var store = new RecentProjectsStore(settings);
+            store.SetThemeMode(RecentProjectsStore.LightTheme);
+
+            // A fresh store over the same file sees the persisted value.
+            var reloaded = new RecentProjectsStore(settings);
+            reloaded.GetThemeMode().Should().Be(RecentProjectsStore.LightTheme);
+        }
+        finally
+        {
+            TestHelpers.DeleteDirectoryRetry(dir);
+        }
+    }
+
+    [Fact]
+    public void Set_theme_does_not_disturb_recent_projects()
+    {
+        var dir = TestHelpers.NewTempDir("UW_Rec_");
+        try
+        {
+            var settings = Path.Combine(dir, "settings.json");
+            var proj = Path.Combine(dir, "proj", "project.db");
+            Directory.CreateDirectory(Path.GetDirectoryName(proj)!);
+            var store = new RecentProjectsStore(settings);
+            store.AddRecentProject(proj);
+
+            store.SetThemeMode(RecentProjectsStore.LightTheme);
+
+            store.GetRecentProjectPaths().Should().Equal(proj);
+            store.GetThemeMode().Should().Be(RecentProjectsStore.LightTheme);
+        }
+        finally
+        {
+            TestHelpers.DeleteDirectoryRetry(dir);
+        }
+    }
 }

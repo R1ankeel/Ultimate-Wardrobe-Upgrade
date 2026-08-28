@@ -19,6 +19,12 @@ public sealed record StatusFilterOption(string Name, ArmorSetStatus? Value)
 }
 
 /// <summary>
+/// One status-legend entry (Sprint 6.6 polish, roadmap 8.5): a WPF-UI <see cref="Symbol"/> glyph plus
+/// its text label, so statuses are rendered with symbols instead of emoji.
+/// </summary>
+public sealed record StatusLegendItem(string Symbol, string Label);
+
+/// <summary>
 /// Overhaul (mapping matrix) screen (Phase 6 Sprint 6.4, amendment 8): projects the current
 /// Overhaul's <see cref="Overhaul.Catalog"/> into the FEMALE ARMOR / MALE ARMOR matrix - catalog sets
 /// as row-band projections under gender sections, one column per weight class present in the catalog,
@@ -121,6 +127,19 @@ public sealed class OverhaulViewModel : ObservableObject
         new StatusFilterOption("Mapped", ArmorSetStatus.Mapped),
         new StatusFilterOption("NeedsPatch", ArmorSetStatus.NeedsPatch),
         new StatusFilterOption("Done", ArmorSetStatus.Done),
+    };
+
+    /// <summary>
+    /// Status-legend glyphs (Sprint 6.6 polish, roadmap 8.5): a WPF-UI symbol + label + accent for each
+    /// matrix status, rendered as a text legend instead of emoji.
+    /// </summary>
+    public static IReadOnlyList<StatusLegendItem> StatusLegend => new[]
+    {
+        new StatusLegendItem("CheckmarkCircle24", "Done"),
+        new StatusLegendItem("GridDots24", "Mapped"),
+        new StatusLegendItem("Warning24", "NeedsPatch"),
+        new StatusLegendItem("Clock24", "InProgress"),
+        new StatusLegendItem("Circle20", "NotStarted"),
     };
 
     private StatusFilterOption _selectedStatusOption = StatusFilterOption.All;
