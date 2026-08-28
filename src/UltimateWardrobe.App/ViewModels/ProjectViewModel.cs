@@ -9,6 +9,7 @@ using UltimateWardrobe.App.Services;
 using UltimateWardrobe.App.Views;
 using UltimateWardrobe.Core.Domain;
 using UltimateWardrobe.Mapping;
+using UltimateWardrobe.Scanner;
 
 namespace UltimateWardrobe.App.ViewModels;
 
@@ -76,6 +77,8 @@ public sealed class ProjectViewModel : ObservableObject
     private readonly IOverhaulSourceValidator _validator;
     private readonly IOverhaulSelection _overhaulSelection;
     private readonly MappingService _mapping;
+    private readonly FolderCatalogScanner _scanner;
+    private readonly IBackgroundTaskService _backgroundTasks;
     private readonly ILogger<ProjectViewModel> _logger;
     private bool _isBusy;
     private OverhaulCardViewModel? _selectedOverhaul;
@@ -92,6 +95,8 @@ public sealed class ProjectViewModel : ObservableObject
         IOverhaulSourceValidator validator,
         IOverhaulSelection overhaulSelection,
         MappingService mapping,
+        FolderCatalogScanner scanner,
+        IBackgroundTaskService backgroundTasks,
         ILogger<ProjectViewModel>? logger = null)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
@@ -100,6 +105,8 @@ public sealed class ProjectViewModel : ObservableObject
         _validator = validator ?? throw new ArgumentNullException(nameof(validator));
         _overhaulSelection = overhaulSelection ?? throw new ArgumentNullException(nameof(overhaulSelection));
         _mapping = mapping ?? throw new ArgumentNullException(nameof(mapping));
+        _scanner = scanner ?? throw new ArgumentNullException(nameof(scanner));
+        _backgroundTasks = backgroundTasks ?? throw new ArgumentNullException(nameof(backgroundTasks));
         _logger = logger ?? NullLogger<ProjectViewModel>.Instance;
     }
 
@@ -196,19 +203,65 @@ public sealed class ProjectViewModel : ObservableObject
                 return;
             }
 
+            var catalog = await ScanSourceAsync(source);
+            if (catalog is null)
+            {
+                return;
+            }
+
             var project = _session.Project!;
             var name = SourceDefaultName(source);
-            var overhaul = new Overhaul(Guid.NewGuid(), name, project.Id, source);
+            var overhaul = new Overhaul(Guid.NewGuid(), name, project.Id, source) { Catalog = catalog };
             project.Overhauls.Add(overhaul);
 
             await SaveAsync();
             Refresh();
-            _logger.LogInformation("Added {Kind} overhaul '{Name}'.", kind, name);
+            _logger.LogInformation(
+                "Added {Kind} overhaul '{Name}' with {SetCount} scanned armor sets.",
+                kind,
+                name,
+                catalog.Sets.Count);
         }
         finally
         {
             IsBusy = false;
             NotifyCanExecuteChanged();
+        }
+    }
+
+    /// <summary>
+    /// Runs the folder scan for a freshly picked source on the background task service (Sprint 6.7:
+    /// the scan starts automatically as soon as the esm-bearing folder is chosen - there is no scan
+    /// button) and returns the catalog. A failed/cancelled scan surfaces an alert and yields null, so
+    /// the caller does not add an unusable overhaul.
+    /// </summary>
+    private async Task<Catalog?> ScanSourceAsync(CatalogSource source)
+    {
+        Catalog? catalog = null;
+        try
+        {
+            await _backgroundTasks.RunAsync("Scanning the overhaul source", async ct =>
+            {
+                catalog = await _scanner.ScanAsync(source, ct);
+            });
+            return catalog;
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation("Scan cancelled for '{Root}'.", source.RootPath);
+            return null;
+        }
+        catch (CatalogScanException ex)
+        {
+            _logger.LogError(ex, "Scan failed for '{Root}'.", source.RootPath);
+            await _dialogs.AlertAsync("Scan failed", ex.Message);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Scan failed for '{Root}'.", source.RootPath);
+            await _dialogs.AlertAsync("Scan failed", $"The source could not be scanned: {ex.Message}");
+            return null;
         }
     }
 

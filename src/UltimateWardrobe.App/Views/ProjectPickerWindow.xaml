@@ -12,51 +12,97 @@
 
   <ui:FluentWindow.Resources>
     <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    <Style x:Key="CornerCloseButton" TargetType="Button">
+      <Setter Property="Width" Value="36" />
+      <Setter Property="Height" Value="36" />
+      <Setter Property="Margin" Value="0,6,6,0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Foreground" Value="#FFFFFFFF" />
+      <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border Background="{TemplateBinding Background}" CornerRadius="4">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background" Value="#33FFFFFF" />
+        </Trigger>
+        <Trigger Property="IsPressed" Value="True">
+          <Setter Property="Background" Value="#4DFFFFFF" />
+        </Trigger>
+      </Style.Triggers>
+    </Style>
   </ui:FluentWindow.Resources>
 
-  <Grid Margin="24" RowDefinitions="Auto,Auto,*,Auto,20,Auto">
-    <TextBlock Grid.Row="0"
-               FontSize="22"
-               FontWeight="SemiBold"
-               Text="Ultimate Wardrobe"
-               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+  <Grid>
+    <Grid Margin="24" RowDefinitions="Auto,Auto,*,Auto,20,Auto">
+      <TextBlock Grid.Row="0"
+                 FontSize="22"
+                 FontWeight="SemiBold"
+                 Text="Ultimate Wardrobe"
+                 Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
 
-    <TextBlock Grid.Row="1"
-               Opacity="0.7"
-               Text="Pick or create the single project to work in. One project per session." />
+      <TextBlock Grid.Row="1"
+                 Opacity="0.7"
+                 Text="Pick or create the single project to work in. One project per session." />
 
-    <StackPanel Grid.Row="2" Margin="0,16,0,0">
-      <TextBlock Text="Recent projects" FontWeight="SemiBold" Margin="0,0,0,8" />
-      <ui:ListView ItemsSource="{Binding RecentProjects}"
-                   SelectedItem="{Binding SelectedRecent}"
-                   BorderThickness="0"
-                   Height="220">
-        <ui:ListView.ItemTemplate>
-          <DataTemplate>
-            <StackPanel>
-              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
-              <TextBlock Text="{Binding Path}" Opacity="0.6" FontSize="11" />
-            </StackPanel>
-          </DataTemplate>
-        </ui:ListView.ItemTemplate>
-      </ui:ListView>
-    </StackPanel>
+      <StackPanel Grid.Row="2" Margin="0,16,0,0">
+        <TextBlock Text="Recent projects" FontWeight="SemiBold" Margin="0,0,0,8" />
+        <ui:ListView ItemsSource="{Binding RecentProjects}"
+                     SelectedItem="{Binding SelectedRecent}"
+                     BorderThickness="0"
+                     Height="220">
+          <ui:ListView.ItemTemplate>
+            <DataTemplate>
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel VerticalAlignment="Center">
+                  <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                  <TextBlock Text="{Binding Path}" Opacity="0.6" FontSize="11" />
+                </StackPanel>
+                <ui:Button Grid.Column="1"
+                           VerticalAlignment="Center"
+                           Margin="12,0,0,0"
+                           Padding="8,4"
+                           Content="Delete"
+                           Command="{Binding DataContext.DeleteRecentCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                           CommandParameter="{Binding}" />
+              </Grid>
+            </DataTemplate>
+          </ui:ListView.ItemTemplate>
+        </ui:ListView>
+      </StackPanel>
 
-    <Grid Grid.Row="3" Margin="0,18,0,0">
-      <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="*" />
-        <ColumnDefinition Width="Auto" />
-        <ColumnDefinition Width="Auto" />
-        <ColumnDefinition Width="Auto" />
-      </Grid.ColumnDefinitions>
-      <ui:Button Grid.Column="1" Content="New project" Command="{Binding NewProjectCommand}" Icon="{ui:SymbolIcon Add24}" />
-      <ui:Button Grid.Column="2" Margin="8,0,0,0" Content="Open project" Command="{Binding OpenProjectCommand}" Icon="{ui:SymbolIcon FolderOpen24}" />
-      <ui:Button Grid.Column="3" Margin="8,0,0,0" Content="Open selected" Command="{Binding OpenSelectedRecentCommand}" Appearance="Primary" />
+      <Grid Grid.Row="3" Margin="0,18,0,0">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <ui:Button Grid.Column="1" Content="New project" Command="{Binding NewProjectCommand}" Icon="{ui:SymbolIcon Add24}" />
+        <ui:Button Grid.Column="2" Margin="8,0,0,0" Content="Open project" Command="{Binding OpenProjectCommand}" Icon="{ui:SymbolIcon FolderOpen24}" />
+        <ui:Button Grid.Column="3" Margin="8,0,0,0" Content="Open selected" Command="{Binding OpenSelectedRecentCommand}" Appearance="Primary" />
+      </Grid>
+
+      <ui:ProgressRing Grid.Row="4"
+                       Width="20" Height="20"
+                       IsIndeterminate="True"
+                       Visibility="{Binding IsBusy, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
     </Grid>
 
-    <ui:ProgressRing Grid.Row="4"
-                     Width="20" Height="20"
-                     IsIndeterminate="True"
-                     Visibility="{Binding IsBusy, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
+    <Button Style="{StaticResource CornerCloseButton}"
+            Click="OnCloseClicked"
+            ToolTip="Close">
+      <ui:SymbolIcon Symbol="Dismiss24" Foreground="#FFFFFFFF" Width="18" Height="18" />
+    </Button>
   </Grid>
 </ui:FluentWindow>

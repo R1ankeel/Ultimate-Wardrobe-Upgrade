@@ -34,7 +34,7 @@ public sealed class ProjectListViewModel : ObservableObject
     private IAsyncRelayCommand? _newProjectCommand;
     private IAsyncRelayCommand? _openProjectCommand;
     private IAsyncRelayCommand? _openSelectedRecentCommand;
-    private IRelayCommand? _removeRecentCommand;
+    private IAsyncRelayCommand<RecentProjectItem>? _deleteRecentCommand;
 
     public ProjectListViewModel(
         RecentProjectsStore recentStore,
@@ -55,13 +55,7 @@ public sealed class ProjectListViewModel : ObservableObject
     public RecentProjectItem? SelectedRecent
     {
         get => _selectedRecent;
-        set
-        {
-            if (SetProperty(ref _selectedRecent, value))
-            {
-                RemoveRecentCommand.NotifyCanExecuteChanged();
-            }
-        }
+        set => SetProperty(ref _selectedRecent, value);
     }
 
     public bool IsBusy
@@ -91,8 +85,15 @@ public sealed class ProjectListViewModel : ObservableObject
                     : OpenRootAsync(selected.Path, createIfMissing: false);
             });
 
-    public IRelayCommand RemoveRecentCommand =>
-        _removeRecentCommand ??= new RelayCommand(RemoveSelectedRecent, () => SelectedRecent is not null);
+    /// <summary>
+    /// Deletes a recent project from disk (per-row, Sprint 6.7): confirms first, then removes the
+    /// project folder recursively and forgets the recent entry. A failed deletion surfaces an alert
+    /// and keeps the entry so the user can retry.
+    /// </summary>
+    public IAsyncRelayCommand<RecentProjectItem> DeleteRecentCommand =>
+        _deleteRecentCommand ??= new AsyncRelayCommand<RecentProjectItem>(
+            DeleteProjectAsync,
+            item => item is not null);
 
     public Task InitializeAsync()
     {
@@ -115,18 +116,53 @@ public sealed class ProjectListViewModel : ObservableObject
         return new RecentProjectItem(databasePath, name);
     }
 
-    private void RemoveSelectedRecent()
+    private async Task DeleteProjectAsync(RecentProjectItem? item)
     {
-        var selected = SelectedRecent;
-        if (selected is null)
+        if (item is null || IsBusy)
         {
             return;
         }
 
-        _recentStore.RemoveRecentProject(selected.Path);
-        RecentProjects.Remove(selected);
-        SelectedRecent = RecentProjects.FirstOrDefault();
-        _logger.LogInformation("Removed '{Path}' from recent projects.", selected.Path);
+        var directory = Path.GetDirectoryName(item.Path);
+        if (string.IsNullOrEmpty(directory))
+        {
+            return;
+        }
+
+        var confirmed = await _dialogs.ConfirmAsync(
+            "Delete project",
+            $"Delete project '{item.Name}'? This permanently removes the project folder '{directory}' and all its data.");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+
+            _recentStore.RemoveRecentProject(item.Path);
+            RecentProjects.Remove(item);
+            if (ReferenceEquals(SelectedRecent, item))
+            {
+                SelectedRecent = RecentProjects.FirstOrDefault();
+            }
+
+            _logger.LogInformation("Deleted project '{Name}' at '{Directory}'.", item.Name, directory);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Could not delete project '{Name}' at '{Directory}'.", item.Name, directory);
+            await _dialogs.AlertAsync("Delete failed", $"The project folder could not be deleted: {ex.Message}");
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     private async Task PickAndOpenAsync(bool createIfMissing)

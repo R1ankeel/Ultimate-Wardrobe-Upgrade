@@ -13,8 +13,8 @@ namespace UltimateWardrobe.Tests.App;
 /// and <see cref="ProjectSession"/>: new project genuinely creates <c>project.db</c> + records recent,
 /// opening an existing db resolves the session, a missing db on "open" alerts and leaves the session
 /// untouched, and a cancelled folder dialog does nothing. Recent list load of the settings file, the
-/// remove-from-recent command, and a reflection guarantee that no switch/close project command is
-/// exposed are also covered.
+/// delete-project command (confirms, removes the folder from disk and forgets the recent entry), and
+/// a reflection guarantee that no switch/close project command is exposed are also covered.
 /// </summary>
 [Trait("Category", "App")]
 public class ProjectListViewModelTests
@@ -175,28 +175,67 @@ public class ProjectListViewModelTests
     }
 
     [Fact]
-    public async Task RemoveRecentCommand_removes_the_selected_path()
+    public async Task DeleteRecentCommand_after_confirm_deletes_folder_and_recent_entry()
     {
         var root = TestHelpers.NewTempDir("UW_List_");
         try
         {
             var path = Path.Combine(root, "projA", "project.db");
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(Path.Combine(Path.GetDirectoryName(path)!, "project.db"), string.Empty);
+            var projectDir = Path.GetDirectoryName(path)!;
+
             var recent = new RecentProjectsStore(Path.Combine(root, "settings.json"));
             recent.AddRecentProject(path);
 
+            var dialogs = new ScriptedDialogService { ConfirmResult = true };
             var vm = new ProjectListViewModel(
                 recent,
                 new ProjectStoreFactory(),
                 new ProjectSession(new ProjectStoreFactory()),
-                new ScriptedDialogService());
+                dialogs);
             await vm.InitializeAsync();
 
-            vm.SelectedRecent = vm.RecentProjects.First();
-            vm.RemoveRecentCommand.Execute(null);
+            Directory.Exists(projectDir).Should().BeTrue();
+            await vm.DeleteRecentCommand.ExecuteAsync(vm.RecentProjects.Single());
 
             vm.RecentProjects.Should().BeEmpty();
             recent.GetRecentProjectPaths().Should().BeEmpty();
+            Directory.Exists(projectDir).Should().BeFalse("the project folder is removed from disk");
+        }
+        finally
+        {
+            TestHelpers.DeleteDirectoryRetry(root);
+        }
+    }
+
+    [Fact]
+    public async Task DeleteRecentCommand_when_not_confirmed_keeps_folder_and_entry()
+    {
+        var root = TestHelpers.NewTempDir("UW_List_");
+        try
+        {
+            var path = Path.Combine(root, "projA", "project.db");
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(Path.Combine(Path.GetDirectoryName(path)!, "project.db"), string.Empty);
+            var projectDir = Path.GetDirectoryName(path)!;
+
+            var recent = new RecentProjectsStore(Path.Combine(root, "settings.json"));
+            recent.AddRecentProject(path);
+
+            var dialogs = new ScriptedDialogService { ConfirmResult = false };
+            var vm = new ProjectListViewModel(
+                recent,
+                new ProjectStoreFactory(),
+                new ProjectSession(new ProjectStoreFactory()),
+                dialogs);
+            await vm.InitializeAsync();
+
+            await vm.DeleteRecentCommand.ExecuteAsync(vm.RecentProjects.Single());
+
+            dialogs.Confirms.Should().ContainSingle();
+            vm.RecentProjects.Should().ContainSingle();
+            Directory.Exists(projectDir).Should().BeTrue("no folder is removed without confirmation");
         }
         finally
         {

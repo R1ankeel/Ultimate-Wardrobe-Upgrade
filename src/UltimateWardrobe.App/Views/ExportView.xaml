@@ -123,7 +123,7 @@
             <TextBlock Text="{Binding ProgressPercent, StringFormat=' {0:0}%'}" Opacity="0.7" Margin="8,0,0,0" />
           </StackPanel>
           <ProgressBar Height="6" Margin="0,8,0,0" Minimum="0" Maximum="100"
-                       Value="{Binding ProgressPercent}" />
+                       Value="{Binding ProgressPercent, Mode=OneWay}" />
           <TextBlock Text="{Binding ProgressDetail}"
                      FontSize="11" Opacity="0.6" Margin="0,6,0,0"
                      TextTrimming="CharacterEllipsis" />

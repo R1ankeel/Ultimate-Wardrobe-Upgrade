@@ -1,11 +1,14 @@
 using FluentAssertions;
+using UltimateWardrobe.App.Infrastructure;
 using UltimateWardrobe.App.Services;
 using UltimateWardrobe.App.ViewModels;
 using UltimateWardrobe.App.Views;
 using UltimateWardrobe.Core.Domain;
 using UltimateWardrobe.Mapping;
+using UltimateWardrobe.Scanner;
 using UltimateWardrobe.Tests.Mapping;
 using UltimateWardrobe.Tests.Persistence;
+using UltimateWardrobe.Tests.Scanner;
 
 namespace UltimateWardrobe.Tests.App;
 
@@ -20,7 +23,46 @@ namespace UltimateWardrobe.Tests.App;
 public class ProjectViewModelTests
 {
     [Fact]
-    public async Task AddVanillaOverhaul_adds_card_autosaves_and_uses_folder_name()
+    public async Task AddVanillaOverhaul_scans_esm_automatically_and_attaches_catalog()
+    {
+        var gameRoot = TestHelpers.NewTempDir("UW_VmGame_");
+        try
+        {
+            var data = Directory.CreateDirectory(Path.Combine(gameRoot, "Data"));
+            var miniUniverse = SyntheticSkyrimMods.WriteMiniUniverse(TestHelpers.NewTempDir("UW_VmUni_"));
+            try
+            {
+                File.Copy(miniUniverse, Path.Combine(data.FullName, "Skyrim.esm"));
+
+                var h = BuildViewModel();
+                h.Vm.Refresh();
+                h.Scripted.PickFolder = (_, _) => gameRoot;
+
+                var before = h.Session.Project!.Overhauls.Count;
+                await h.Vm.AddVanillaOverhaulCommand.ExecuteAsync(null);
+
+                h.Vm.Overhauls.Should().HaveCount(before + 1);
+                h.Session.Project.Overhauls.Should().HaveCount(before + 1);
+                h.Session.Project.Overhauls.Last().Name.Should()
+                    .Be(new DirectoryInfo(gameRoot).Name, "the card starts at the source folder name");
+                h.Session.Project.Overhauls.Last().Catalog.Should().NotBeNull("the esm is scanned automatically once the folder is picked");
+                h.Vm.Overhauls.Single().TotalSets.Should().BeGreaterThan(0, "the mini universe carries armor sets");
+                h.Vm.Overhauls.Single().StatusLabel.Should().Be("Not started");
+                h.Store.SaveCount.Should().Be(before + 1, "each mutation autosaves through the shared store");
+            }
+            finally
+            {
+                TestHelpers.DeleteDirectoryRetry(Path.GetDirectoryName(miniUniverse)!);
+            }
+        }
+        finally
+        {
+            TestHelpers.DeleteDirectoryRetry(gameRoot);
+        }
+    }
+
+    [Fact]
+    public async Task AddVanillaOverhaul_with_unreadable_plugin_still_adds_overhaul_with_empty_catalog()
     {
         var gameRoot = TestHelpers.NewTempDir("UW_VmGame_");
         try
@@ -35,11 +77,9 @@ public class ProjectViewModelTests
             var before = h.Session.Project!.Overhauls.Count;
             await h.Vm.AddVanillaOverhaulCommand.ExecuteAsync(null);
 
-            h.Vm.Overhauls.Should().HaveCount(before + 1);
             h.Session.Project.Overhauls.Should().HaveCount(before + 1);
-            h.Session.Project.Overhauls.Last().Name.Should()
-                .Be(new DirectoryInfo(gameRoot).Name, "the card starts at the source folder name");
-            h.Store.SaveCount.Should().Be(before + 1, "each mutation autosaves through the shared store");
+            h.Session.Project.Overhauls.Last().Catalog.Should().NotBeNull("the scan always attaches a catalog");
+            h.Session.Project.Overhauls.Last().Catalog!.Sets.Should().BeEmpty();
             h.Vm.Overhauls.Single().TotalSets.Should().Be(0);
             h.Vm.Overhauls.Single().StatusLabel.Should().Be("No catalog - run a scan");
         }
@@ -156,7 +196,9 @@ public class ProjectViewModelTests
             scripted,
             new OverhaulSourceValidator(),
             new OverhaulSelection(),
-            new MappingService(project.Library));
+            new MappingService(project.Library),
+            new FolderCatalogScanner(),
+            new DispatcherBackgroundTaskService());
 
         return new Host(session, store, vm, scripted, scripts);
     }

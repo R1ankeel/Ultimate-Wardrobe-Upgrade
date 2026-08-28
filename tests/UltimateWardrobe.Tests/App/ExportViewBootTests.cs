@@ -12,23 +12,20 @@ using Wpf.Ui.Abstractions;
 namespace UltimateWardrobe.Tests.App;
 
 /// <summary>
-/// Regression: the Overhaul screen must construct when the Project screen navigates to it (clicking
-/// "Open" on an overhaul card resolves the view from DI). The Sprint 6.6.2 crash was a
-/// <c>XamlParseException: "Auto,0,0,0" is not a valid value for "Margin"</c> on the popover's "Import
-/// patch" button (<c>Margin="Auto,..."</c> - <c>Auto</c> is a Grid length, not a Thickness), so the
-/// page could not parse the moment navigation built it; the "Import patch" button sits inside the
-/// shared popover panel and was never exercised in the Sprint 6.5-6.6 interaction suite. The
-/// regression resolves the view the way the WPF-UI page provider does after
-/// <c>OverhaulViewModel.SelectOverhaul</c> sets <see cref="IOverhaulSelection"/>. Runs on a dedicated
-/// STA thread, serialized with the other WPF boot tests.
+/// Regression: the Export screen must construct when the sheet navigates to it (the Sprint 6.7 crash
+/// was not on navigation but on the first Build click - snackbar calls threw
+/// "<c>The SnackbarPresenter was never set</c>" because the shell never attached a
+/// <see cref="Wpf.Ui.Controls.SnackbarPresenter"/>). This resolves the view the way the WPF-UI page
+/// provider does, on a dedicated STA thread, with the shell DI so the snackbar wiring is present.
+/// Serialized with the other WPF boot tests.
 /// </summary>
 [Collection("WPF Boot Tests")]
-public class OverhaulViewBootTests
+public class ExportViewBootTests
 {
     [Fact]
-    public void OverhaulView_builds_when_navigation_opens_it()
+    public void ExportView_builds_when_navigation_opens_it()
     {
-        var root = TestHelpers.NewTempDir("UW_OverhaulView_");
+        var root = TestHelpers.NewTempDir("UW_ExportView_");
         try
         {
             Exception? captured = null;
@@ -72,9 +69,9 @@ public class OverhaulViewBootTests
                     provider.GetRequiredService<IOverhaulSelection>().Select(overhaul.Id);
 
                     // Same resolution path as AppNavigationViewPageProvider.GetPage during navigation.
-                    var page = provider.GetRequiredService<INavigationViewPageProvider>().GetPage(typeof(OverhaulView));
-                    page.Should().BeOfType<OverhaulView>();
-                    ((OverhaulView)page).DataContext.Should().BeOfType<OverhaulViewModel>();
+                    var page = provider.GetRequiredService<INavigationViewPageProvider>().GetPage(typeof(ExportView));
+                    page.Should().BeOfType<ExportView>();
+                    ((ExportView)page).DataContext.Should().BeOfType<ExportViewModel>();
                 }
                 catch (Exception ex)
                 {
@@ -87,13 +84,13 @@ public class OverhaulViewBootTests
 
             if (!finished)
             {
-                throw new TimeoutException("OverhaulView construction did not finish within 30s.");
+                throw new TimeoutException("ExportView construction did not finish within 30s.");
             }
 
             if (captured is not null)
             {
                 throw new InvalidOperationException(
-                    "OverhaulView must build without crashing when navigation opens it.",
+                    "ExportView must build without crashing when navigation opens it.",
                     captured);
             }
         }

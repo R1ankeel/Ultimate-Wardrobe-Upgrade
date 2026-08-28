@@ -19,19 +19,28 @@ public partial class MainWindow : FluentWindow
     private readonly MainViewModel _viewModel;
     private readonly Wpf.Ui.INavigationService _navigationService;
     private readonly INavigationViewPageProvider _pageProvider;
+    private readonly Wpf.Ui.ISnackbarService _snackbarService;
 
     public MainWindow(
         MainViewModel viewModel,
         Wpf.Ui.INavigationService navigationService,
-        INavigationViewPageProvider pageProvider)
+        INavigationViewPageProvider pageProvider,
+        Wpf.Ui.ISnackbarService snackbarService)
     {
         _viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         _navigationService = navigationService ?? throw new ArgumentNullException(nameof(navigationService));
         _pageProvider = pageProvider ?? throw new ArgumentNullException(nameof(pageProvider));
+        _snackbarService = snackbarService ?? throw new ArgumentNullException(nameof(snackbarService));
         DataContext = viewModel;
         InitializeComponent();
         ApplyAppIcon();
+        _snackbarService.SetSnackbarPresenter(SnackbarPresenter);
         Loaded += OnLoaded;
+    }
+
+    private void OnCloseClicked(object sender, RoutedEventArgs e)
+    {
+        Close();
     }
 
     /// <summary>
