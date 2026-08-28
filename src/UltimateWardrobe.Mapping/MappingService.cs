@@ -19,9 +19,9 @@ namespace UltimateWardrobe.Mapping;
 /// failing operation leaves no partial mapping). Sprint 3.1.
 ///
 /// Patch requirement detection (<see cref="NeedFor"/>, <see cref="BodyMarkerFromPath"/>) and the
-/// per-mapping status (<see cref="GetStatus"/>) land in Sprint 3.2; the full <see cref="GetArmorSetStatus"/>
-/// table + Overhaul progress arithmetic land in Sprint 3.3. Freshly assigned mappings are stamped
-/// <see cref="MappingStatus.Mapped"/>.
+/// per-mapping status (<see cref="GetStatus"/>) land in Sprint 3.2, and the full per-set
+/// <see cref="GetArmorSetStatus"/> / <see cref="SetDone"/> + <see cref="GetOverhaulProgress"/> in
+/// Sprint 3.3. Freshly assigned mappings are stamped <see cref="MappingStatus.Mapped"/>.
 /// </summary>
 public sealed class MappingService
 {
@@ -263,21 +263,67 @@ public sealed class MappingService
     }
 
     /// <summary>
-    /// Per-set <see cref="ArmorSetStatus"/> (roadmap 5.4). Returns only the four stable values
-    /// <see cref="ArmorSetStatus.NotStarted"/>/<see cref="ArmorSetStatus.InProgress"/>/
-    /// <see cref="ArmorSetStatus.Mapped"/>/<see cref="ArmorSetStatus.NeedsPatch"/> - it never
-    /// returns <see cref="ArmorSetStatus.Done"/> and takes no done-override (the overlay lives only
-    /// in <see cref="GetOverhaulProgress"/>). A set with no mapping is <see cref="ArmorSetStatus.NotStarted"/>.
+    /// Per-set <see cref="ArmorSetStatus"/> (roadmap 5.4, Phase 3 plan 4.3). Returns only the four
+    /// stable values <see cref="ArmorSetStatus.NotStarted"/>/<see cref="ArmorSetStatus.InProgress"/>/
+    /// <see cref="ArmorSetStatus.Mapped"/>/<see cref="ArmorSetStatus.NeedsPatch"/> - it never returns
+    /// <see cref="ArmorSetStatus.Done"/> and takes no done-override (the overlay lives only in
+    /// <see cref="GetOverhaulProgress"/> and <see cref="SetDone"/>). Per-gender: every target piece
+    /// of every variant (each gender) is evaluated against the set's <see cref="PieceMapping"/>s.
+    /// Sprint 3.3.
     /// </summary>
     public ArmorSetStatus GetArmorSetStatus(ArmorSet catalogSet, IReadOnlyList<PieceMapping> mappings)
     {
         if (catalogSet is null) throw new ArgumentNullException(nameof(catalogSet));
         if (mappings is null) throw new ArgumentNullException(nameof(mappings));
 
-        var hasMapping = mappings.Any(m => m.TargetArmorSetId == catalogSet.Id);
-        if (!hasMapping) return ArmorSetStatus.NotStarted;
+        var setMappings = mappings.Where(m => m.TargetArmorSetId == catalogSet.Id).ToList();
 
-        throw new NotImplementedException("Full ArmorSetStatus derivation lands in Sprint 3.3.");
+        var mappedPieces = 0;
+        var totalPieces = 0;
+        var anyNeedsPatch = false;
+
+        foreach (var variant in catalogSet.Variants)
+        {
+            foreach (var piece in variant.Pieces)
+            {
+                totalPieces++;
+
+                var pieceMapping = setMappings.FirstOrDefault(m =>
+                    m.TargetPieceEditorId == piece.EditorId && m.TargetGender == variant.Gender);
+
+                if (pieceMapping is null) continue;
+
+                mappedPieces++;
+                if (pieceMapping.Status == MappingStatus.NeedsPatch)
+                {
+                    anyNeedsPatch = true;
+                }
+            }
+        }
+
+        if (mappedPieces == 0) return ArmorSetStatus.NotStarted;
+        if (anyNeedsPatch) return ArmorSetStatus.NeedsPatch;
+        if (mappedPieces == totalPieces) return ArmorSetStatus.Mapped;
+        return ArmorSetStatus.InProgress;
+    }
+
+    /// <summary>
+    /// The ONLY way to toggle the caller-side <c>Done</c> overlay for a set (Phase 3 plan 3.3.3).
+    /// Stores the boolean at the caller side (the returned dictionary) without folding into any
+    /// <see cref="ArmorSetStatus"/> value. A set is recorded as done only when it is currently
+    /// derived <see cref="ArmorSetStatus.Mapped"/> - <see cref="GetOverhaulProgress"/> turns that into
+    /// the <c>Done</c> bucket via <c>Mapped AND doneOverride</c>. Sprint 3.3.
+    /// </summary>
+    public IReadOnlyDictionary<string, bool> SetDone(
+        ArmorSet catalogSet,
+        IReadOnlyList<PieceMapping> mappings,
+        bool done)
+    {
+        if (catalogSet is null) throw new ArgumentNullException(nameof(catalogSet));
+        if (mappings is null) throw new ArgumentNullException(nameof(mappings));
+
+        var effective = done && GetArmorSetStatus(catalogSet, mappings) == ArmorSetStatus.Mapped;
+        return new Dictionary<string, bool> { [catalogSet.Id] = effective };
     }
 
     /// <summary>
