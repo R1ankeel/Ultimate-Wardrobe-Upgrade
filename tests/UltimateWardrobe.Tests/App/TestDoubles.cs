@@ -2,8 +2,10 @@ using UltimateWardrobe.App.Infrastructure;
 using UltimateWardrobe.App.Services;
 using UltimateWardrobe.Core.Abstractions;
 using UltimateWardrobe.Core.Domain;
+using UltimateWardrobe.Core.Enums;
 using UltimateWardrobe.Persistence;
 using FluentAssertions;
+using System.IO;
 using System.Reflection;
 
 namespace UltimateWardrobe.Tests.App;
@@ -94,6 +96,78 @@ internal sealed class RecordingNavigation : IAppNavigationService
     }
 
     public bool GoBack() => false;
+}
+
+/// <summary>
+/// Scriptable <see cref="IDonorImportRunner"/> for headless <see cref="DonorLibraryViewModel"/> tests
+/// (Phase 6 Sprint 6.3). Records every batch plus the reported progress snapshots, and delegates the
+/// actual work to <see cref="OnImport"/> so a test can force success, a per-file append, a throw, or a
+/// cancel without touching real archives.
+/// </summary>
+internal sealed class ScriptedDonorImportRunner : IDonorImportRunner
+{
+    public Func<IReadOnlyList<string>, string, UltimateWardrobe.Core.Domain.DonorLibrary, Catalog?, CancellationToken, IProgress<DonorImportProgress>?, Task<IReadOnlyList<DonorAsset>>> OnImport =
+        static (paths, _, library, _, _, progress) =>
+        {
+            var done = new List<DonorAsset>();
+            var i = 0;
+            foreach (var path in paths)
+            {
+                var asset = new DonorAsset(
+                    Guid.NewGuid(),
+                    Path.GetFileName(path),
+                    Path.Combine("C:\\Src", Guid.NewGuid().ToString()),
+                    DateTime.UtcNow,
+                    $"h{i}",
+                    DonorAssetKind.FullReplacer);
+                library.Assets.Add(asset);
+                done.Add(asset);
+                i++;
+                progress?.Report(new DonorImportProgress(i, paths.Count));
+            }
+
+            return Task.FromResult<IReadOnlyList<DonorAsset>>(done);
+        };
+
+    public List<DonorImportProgress> Reported { get; } = new();
+    public List<(IReadOnlyList<string> Paths, string ProjectRoot, Catalog? Hint)> Calls { get; } = new();
+
+    public async Task<IReadOnlyList<DonorAsset>> ImportAsync(
+        IReadOnlyList<string> archivePaths,
+        string projectRoot,
+        UltimateWardrobe.Core.Domain.DonorLibrary library,
+        Catalog? catalogHint,
+        IProgress<DonorImportProgress>? progress,
+        CancellationToken cancellationToken = default)
+    {
+        Calls.Add((archivePaths, projectRoot, catalogHint));
+
+        var result = await OnImport(archivePaths, projectRoot, library, catalogHint, cancellationToken,
+            new InvokeProgress(progress, Reported));
+        return result;
+    }
+
+    public IReadOnlyList<string> LastPaths => Calls.Count > 0 ? Calls[^1].Paths : Array.Empty<string>();
+    public Catalog? LastHint => Calls.Count > 0 ? Calls[^1].Hint : null;
+
+    /// <summary>Forwards report calls to the VM progress and also records them for assertions.</summary>
+    private sealed class InvokeProgress : IProgress<DonorImportProgress>
+    {
+        private readonly IProgress<DonorImportProgress>? _inner;
+        private readonly List<DonorImportProgress> _recorded;
+
+        public InvokeProgress(IProgress<DonorImportProgress>? inner, List<DonorImportProgress> recorded)
+        {
+            _inner = inner;
+            _recorded = recorded;
+        }
+
+        public void Report(DonorImportProgress value)
+        {
+            _recorded.Add(value);
+            _inner?.Report(value);
+        }
+    }
 }
 
 /// <summary>

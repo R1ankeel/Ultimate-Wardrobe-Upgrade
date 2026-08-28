@@ -40,6 +40,12 @@
             <ui:SymbolIcon Symbol="GridDots24" />
           </ui:NavigationViewItem.Icon>
         </ui:NavigationViewItem>
+        <ui:NavigationViewItem Content="Donor library"
+                               TargetPageType="{x:Type views:DonorLibraryView}">
+          <ui:NavigationViewItem.Icon>
+            <ui:SymbolIcon Symbol="FolderOpen24" />
+          </ui:NavigationViewItem.Icon>
+        </ui:NavigationViewItem>
         <ui:NavigationViewItem Content="Export"
                                TargetPageType="{x:Type views:ExportView}">
           <ui:NavigationViewItem.Icon>

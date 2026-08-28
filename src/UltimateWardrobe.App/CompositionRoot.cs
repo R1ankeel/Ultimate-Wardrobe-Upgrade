@@ -36,6 +36,7 @@ public static class CompositionRoot
         services.AddSingleton<IProjectStoreFactory, ProjectStoreFactory>();
         services.AddSingleton<IOverhaulSourceValidator, OverhaulSourceValidator>();
         services.AddSingleton<IBackgroundTaskService, DispatcherBackgroundTaskService>();
+        services.AddTransient<IDonorImportRunner, DonorImportRunner>();
 
         services.AddSingleton(_ => new CompositeExtractor());
         services.AddSingleton<IArchiveExtractor>(sp => sp.GetRequiredService<CompositeExtractor>());
@@ -84,6 +85,7 @@ public static class CompositionRoot
         services.AddTransient<ProjectPickerWindow>();
         services.AddTransient<ProjectView>();
         services.AddTransient<OverhaulView>();
+        services.AddTransient<DonorLibraryView>();
         services.AddTransient<ExportView>();
     }
 

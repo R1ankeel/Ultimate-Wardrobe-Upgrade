@@ -74,6 +74,10 @@ The exact wiring is resolved against the shipped 4.3.0 API and verified by a hea
 
 **Frozen Phases 1-5 constraint (documented limitation):** `ProjectStore.SaveAsync` is upsert-only - deleting an Overhaul removes it from the live graph and autosaves, but the real `Overhaul`/`Mapping` DB rows remain (no orphan/row GC). This is a Phase 4 limitation deliberately NOT touched here.
 
+## Donor library screen (Sprint 6.3)
+
+`DonorLibraryView` (`DonorLibraryViewModel`) shows the open project's `DonorLibrary.Assets` as a table: original file name, Kind badge (roadmap 4.3), ProvidedSets count, BodySlide/physics indicators and import date, with per-row Remove / Reclassify / Set Kind commands. Import is a drop zone (`.7z` / `.zip` / `.rar`, multi-file, folders flattened) that runs the Phase 2 pipeline one archive at a time on `IBackgroundTaskService` through `IDonorImportRunner` with a per-file `ProgressBar` + cancel. A failed archive surfaces a typed alert and adds nothing (Phase 2 already cleaned up); a cancelled batch is silent. Every mutation autosaves through the shared `IProjectSession.Store`. The concrete sealed `DonorLibraryService` is injected directly (consistent with `ProjectViewModel` -> `MappingService`) and the per-file runner abstraction keeps the view model headless-testable.
+
 ## Screen / navigation map (roadmap 8.2, minus a shell project list)
 
 ```
@@ -84,11 +88,12 @@ MainWindow (FluentWindow)
   NavigationView pane
     Project       - overhaul cards: name, progress, mapped/total, status + Add (Vanilla/StoryMod) + rename/delete/select (Sprint 6.2)
     Overhaul      - placeholder (Sprint 6.4/6.5: mapping matrix grid + popover)
+    Donor library - donor table (Kind badge, sets, BodySlide/physics, date) + drag-and-drop import drop zone (Sprint 6.3)
     Export        - placeholder (Sprint 6.6: checklist + build + result)
   Status bar       busy spinner (IsBusy), latest ILogViewer line, Cancel, version in title
 ```
 
-The status bar is bound to `MainViewModel` (busy spinner visibility to `IsBusy`, live text to `StatusText` fed by `ILogViewer.LineAppended`, `CancelCommand`, version in `Title`). The Overhaul and Export screens are placeholders until Sprint 6.4/6.6; the Project screen (overhaul cards) landed in Sprint 6.2.
+The status bar is bound to `MainViewModel` (busy spinner visibility to `IsBusy`, live text to `StatusText` fed by `ILogViewer.LineAppended`, `CancelCommand`, version in `Title`). The Overhaul and Export screens are placeholders until Sprint 6.4/6.6; the Project screen (overhaul cards) landed in Sprint 6.2 and the Donor library screen in Sprint 6.3.
 
 ## Settings layout
 
@@ -96,11 +101,10 @@ Repository-owned data lives under the user's Project root (`project.db`, `Source
 
 ## MVVM conventions
 
-`ObservableObject` partial classes with `[ObservableProperty]` / `[RelayCommand]` / `[AsyncRelayCommand]`, `ObservableCollection<T>` for lists, `AsyncRelayCommand` + `CanExecute` as the "busy" guard. ViewModels depend only on App-layer interfaces (`IAppNavigationService`, `IAppDialogService`, `ISnackbarService`, `IBackgroundTaskService`, `IOverhaulSourceValidator`, `ILogViewer`) so they run headless in xUnit; the WPF-UI-backed implementations live in `Views/Infrastructure`.
+`ObservableObject` partial classes with `[ObservableProperty]` / `[RelayCommand]` / `[AsyncRelayCommand]`, `ObservableCollection<T>` for lists, `AsyncRelayCommand` + `CanExecute` as the "busy" guard. ViewModels depend only on App-layer interfaces (`IAppNavigationService`, `IAppDialogService`, `ISnackbarService`, `IBackgroundTaskService`, `IOverhaulSourceValidator`, `ILogViewer`, `IDonorImportRunner`) so they run headless in xUnit; the WPF-UI-backed implementations live in `Views/Infrastructure`. Concrete Phase 2 services (`MappingService`, `DonorLibraryService`) are injected directly.
 
 ## Screens still to come
 
-- Sprint 6.3 - `DonorLibraryViewModel` table + drag-and-drop import drop zone.
 - Sprint 6.4 - `OverhaulViewModel` mapping matrix grid (FEMALE/MALE ARMOR section rows x weight columns, 2-D virtualization).
 - Sprint 6.5 - `ArmorSetDetailViewModel` anchored-popover cell editor.
 - Sprint 6.6 - `ExportViewModel` checklist + `IPatcher` invocation + result card + polish + manual E2E.
