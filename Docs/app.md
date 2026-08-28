@@ -145,6 +145,10 @@ Repository-owned data lives under the user's Project root (`project.db`, `Source
 
 The shell crashed right after the picker created or opened a project with `XamlParseException: Cannot find resource named "AppIcon"` (`MainWindow.xaml` line 7). Root cause: `Icon="{StaticResource AppIcon}"` was set on the MainWindow root element while `AppIcon` lived in the same window's `<FluentWindow.Resources>` - a root-element StaticResource only sees resources declared before its position in BAML, so the window's own later-declared resources were invisible. Fix: the icon moved to app scope (`App.xaml`), `MainWindow.xaml` declares no icon resource and no StaticResource, and `MainWindow.ApplyAppIcon()` resolves it from code. `Application.Current` may be null in headless STA boot checks, hence the null-safe lookup. The regression test `MainWindowBootTests.MainWindow_builds_with_an_open_session` constructs the shell on a dedicated STA thread with an open `IProjectSession` and fails again if a parse-time static icon returns.
 
+## Post-6.6 crash fix - Overhaul screen invalid margin
+
+Clicking "Open" on an overhaul card in the Project screen crashed the app with `XamlParseException: "Auto,0,0,0" is not a valid value for "Margin"` the moment the page was built (v0.6.6.2). Root cause: the "Import patch" button inside the shared popover panel in `OverhaulView.xaml` declared `Margin="Auto,0,0,0"` - `Auto` is a Grid length, not a `Thickness`, so the whole page failed to parse when navigation resolved `OverhaulView` from DI (clicks were the only path that constructed the page; the Sprint 6.5/6.6 interaction suites exercised the view models headlessly, never the page). Fix: the button now uses a plain `Margin="12,0,0,0"`. The regression test `OverhaulViewBootTests.OverhaulView_builds_when_navigation_opens_it` resolves the page through the same `INavigationViewPageProvider.GetPage` path on a dedicated STA thread with an open `IProjectSession` + a selected Overhaul and fails again if an invalid margin returns.
+
 ## Screens still to come
 
 None for Phase 6. Phase 7 targets story-mod (non-Vanilla) overhauls and Postbone/post-build facilities.
