@@ -32,20 +32,46 @@ public sealed class BodySlideDetector
 
     private static bool IsBodySlidePath(string path)
     {
-        if (path.StartsWith(SliderSets + "/", StringComparison.Ordinal) &&
+        // FOMOD/nested fix: donor archives often have BodySlide deep under subfolders like
+        // "01 Core/data/CalienteTools/BodySlide/..." or "[FB] Bishop Armor 3BA/CalienteTools/...".
+        // Check for the segment anywhere in the game-relative path, not just at the start.
+        if (path.IndexOf(SliderSets + "/", StringComparison.OrdinalIgnoreCase) >= 0 &&
             path.EndsWith(".osp", StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
 
-        if (path.StartsWith(SliderGroups + "/", StringComparison.Ordinal) &&
+        if (path.IndexOf(SliderGroups + "/", StringComparison.OrdinalIgnoreCase) >= 0 &&
             path.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
 
-        var directory = Path.GetDirectoryName(path)?.Replace('\\', '/') ?? string.Empty;
-        return string.Equals(directory, BodySlideRoot, StringComparison.Ordinal) &&
-               path.EndsWith(".xml", StringComparison.OrdinalIgnoreCase);
+        // Top-level BodySlide xml (e.g. CalienteTools/BodySlide/*.xml) - also handle nested prefix like "Prefix/CalienteTools/BodySlide/*.xml"
+        var idx = path.IndexOf(BodySlideRoot + "/", StringComparison.OrdinalIgnoreCase);
+        if (idx >= 0)
+        {
+            var afterRoot = path[(idx + BodySlideRoot.Length + 1)..];
+            // Direct child of BodySlide root ends with .xml and has no further slash (or is in SliderSets/SliderGroups which already handled)
+            if (afterRoot.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) && !afterRoot.Contains('/', StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            // Also handle case where path is exactly "CalienteTools/BodySlide/*.xml" with prefix stripped to game-relative
+            var directory = Path.GetDirectoryName(path)?.Replace('\\', '/') ?? string.Empty;
+            var dirIdx = directory.IndexOf(BodySlideRoot, StringComparison.OrdinalIgnoreCase);
+            if (dirIdx >= 0)
+            {
+                var dirAfter = directory[dirIdx..];
+                if (string.Equals(dirAfter, BodySlideRoot, StringComparison.OrdinalIgnoreCase) &&
+                    path.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }

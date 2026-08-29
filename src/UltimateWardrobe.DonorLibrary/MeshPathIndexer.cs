@@ -32,36 +32,30 @@ public sealed class MeshPathIndexer
 
         var found = new HashSet<string>(StringComparer.Ordinal);
 
-        AddFromLayout(extractedDir, category, extension, found);
-        var dataDir = Path.Combine(extractedDir, "Data");
-        if (Directory.Exists(dataDir))
+        // FOMOD/nested fix: donor archives often have meshes deep under subfolders like
+        // "01 Core/data/meshes/..." or "[FB] Bishop Armor 3BA/CalienteTools/.../meshes/...".
+        // Use the shared DonorTree enumeration (recursive, Data/ prefix stripped at root) and
+        // extract the game-relative path from the first occurrence of the category segment.
+        foreach (var relative in DonorTree.EnumerateAll(extractedDir))
         {
-            AddFromLayout(dataDir, category, extension, found);
-        }
-
-        return found.OrderBy(p => p, StringComparer.Ordinal).ToList();
-    }
-
-    private static void AddFromLayout(string baseDir, string category, string extension, ISet<string> found)
-    {
-        var categoryDir = Path.Combine(baseDir, category);
-        if (!Directory.Exists(categoryDir))
-        {
-            return;
-        }
-
-        foreach (var file in Directory.EnumerateFiles(categoryDir, "*" + extension, SearchOption.AllDirectories))
-        {
-            if (!string.Equals(Path.GetExtension(file), extension, StringComparison.OrdinalIgnoreCase))
+            if (!relative.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
-            var relative = Path.GetRelativePath(baseDir, file).Replace('\\', '/');
-            if (relative.StartsWith($"{category}/", StringComparison.Ordinal))
+            var idx = relative.IndexOf($"{category}/", StringComparison.OrdinalIgnoreCase);
+            if (idx < 0)
             {
-                found.Add(relative);
+                continue;
+            }
+
+            var gameRelative = relative[idx..].Replace('\\', '/');
+            if (gameRelative.StartsWith($"{category}/", StringComparison.OrdinalIgnoreCase))
+            {
+                found.Add(gameRelative);
             }
         }
+
+        return found.OrderBy(p => p, StringComparer.Ordinal).ToList();
     }
 }

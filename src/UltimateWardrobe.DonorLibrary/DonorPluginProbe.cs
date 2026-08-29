@@ -47,14 +47,14 @@ public sealed class DonorPluginProbe
         var dataDir = Path.Combine(extractedDir, "Data");
         var resolvedDataPath = Directory.Exists(dataDir) ? dataDir : extractedDir;
 
-        var searchDirs = new List<string> { extractedDir };
-        if (Directory.Exists(dataDir))
-        {
-            searchDirs.Add(dataDir);
-        }
-
-        var candidates = searchDirs
-            .SelectMany(EnumeratePlugins)
+        // FOMOD/nested fix: donor archives often have plugins deep under subfolders like
+        // "01 Core/data/[Christine] Dragon Marauder.esp" or "Main/Sub/Data/...". Search recursively
+        // from the extraction root and deduplicate by absolute path.
+        var candidates = Directory.EnumerateFiles(extractedDir, "*", SearchOption.AllDirectories)
+            .Where(f => f.EndsWith(".esp", StringComparison.OrdinalIgnoreCase)
+                     || f.EndsWith(".esm", StringComparison.OrdinalIgnoreCase)
+                     || f.EndsWith(".esl", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .Select(file => new DiscoveredPlugin { AbsolutePath = file, ModKey = ModKey.FromFileName(Path.GetFileName(file)) })
             .Where(p => p.ModKey.Name.Length > 0)
             .OrderBy(p => p.ModKey.Name, StringComparer.Ordinal)

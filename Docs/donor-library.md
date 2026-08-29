@@ -71,12 +71,12 @@ Branch 1 with zero sets means "the donor esp carries no groupable armor (no ARMO
 
 `UltimateWardrobe.DonorLibrary` (`net10.0-windows`): project references `Core + Archives + Scanner`; package references `Mutagen.Bethesda.Skyrim 0.54.4` + `Microsoft.Extensions.Logging.Abstractions 10.*`; the NU190x `WarningsNotAsErrors`/`NoWarn` pattern is mirrored. Registered in `UltimateWardrobe.slnx` and in the Tests project.
 
-### DonorPluginProbe - frozen main-plugin rule (2.0.5)
+### DonorPluginProbe - frozen main-plugin rule (2.0.5) + FOMOD/nested fix (Sprint 2.6)
 
-- Candidate enumeration: `*.esm | *.esl | *.esp` in the root and in `Data/` when present (same layout rule as `PluginDiscovery.ResolveDataPath`). Candidates ordered ordinal by `ModKey.Name`.
-- `DataPath` resolves to `Data/` when it exists, else the extracted root.
+- Candidate enumeration: `*.esm | *.esl | *.esp` found recursively under the extracted root (all subdirectories, `SearchOption.AllDirectories`, distinct by absolute path) - handles FOMOD layouts like `01 Core/data/[Christine] Dragon Marauder.esp` and `[FB] Bishop Armor 3BA/[FB] Bishop Armor.esp` where the plugin is not at the top level. Candidates ordered ordinal by `ModKey.Name`.
+- `DataPath` resolves to `Data/` when it exists, else the extracted root (used by branch-1 `FileResolver`).
 - Main-plugin rule (frozen, deterministic): a candidate is "main" when no other candidate lists it in its `MasterReferences` (read via `ModLoader.ReadMasters`); among qualified candidates prefer `.esp` over `.esl` over `.esm`, then ordinal by name. A pure master chain (every candidate referenced) reduces to the same extension/ordinal tie-break. Corrupt plugins warn and are treated as master-less (last-choice candidates). A no-plugin folder yields an empty probe.
-- Deterministic, unit-tested (10 tests).
+- Deterministic, unit-tested (10 tests) - FOMOD case covered by recursive search.
 
 ### Classifier skeleton (2.0.4)
 
@@ -116,9 +116,9 @@ A donor plugin that yields zero sets (or the reference-dependent case without a 
 
 Branch 2 classifies folders without a usable plugin - mesh-only replacers and fall-throughs (2.1.4). It runs purely on file paths (no Mutagen), so synthetic unit trees are just plain files.
 
-### MeshPathIndexer (2.2.1)
+### MeshPathIndexer (2.2.1) + FOMOD/nested fix (Sprint 2.6)
 
-Recursive `meshes/**/*.nif` and `textures/**/*.dds` globbing over BOTH the extracted root and the `Data/` layout for each; normalized to game-relative forward-slash paths that keep the `meshes/`/`textures/` stem and drop any `Data/` prefix (the branch-1 `FileResolver` convention). Identical game-relative paths are deduped; output is ordinal. A missing folder yields empty (no exception).
+Recursive `meshes/**/*.nif` and `textures/**/*.dds` discovery via `DonorTree.EnumerateAll` (all files, `Data/` prefix stripped at root) and game-relative extraction from the first `meshes/`/`textures/` segment - handles FOMOD/nested layouts like `01 Core/data/meshes/...` and `[FB] Bishop Armor 3BA/.../meshes/...` where the category folder is not at the top level. Normalized to game-relative forward-slash paths that keep the `meshes/`/`textures/` stem; identical game-relative paths are deduped; output is ordinal. A missing category yields empty (no exception).
 
 ### DonorNameHeuristics (2.2.2)
 
@@ -143,19 +143,19 @@ Pure static functions over mesh/texture stems and relative paths.
 
 Branch 3 runs for EVERY classification regardless of which branch produced the sets (2.3.4). `DonorTree.EnumerateAll` scans the whole folder in both layouts and normalizes every file to a game-relative path (drops the `Data/` prefix, matching the branch-2 `MeshPathIndexer` convention - Detected* lists line up with mesh paths and the Phase-1 `FileResolver`; the manifest keeps the raw prefix).
 
-### BodySlideDetector (2.3.1)
+### BodySlideDetector (2.3.1) + FOMOD/nested fix (Sprint 2.6)
 
-From the normalized stream, flagged paths:
+From the normalized `DonorTree.EnumerateAll` stream (recursive, `Data/` stripped at root), flagged paths via substring search (not just prefix) to handle FOMOD/nested prefixes like `01 Core/data/CalienteTools/BodySlide/...` or `[FB] Bishop Armor 3BA/CalienteTools/...`:
 
-- any `*.osp` under `CalienteTools/BodySlide/SliderSets/` (recursive - real packs nest per-set folders)
-- any `*.xml` under `CalienteTools/BodySlide/SliderGroups/` (recursive)
-- any `.xml` directly under the BodySlide root (the slider-group/preview xmls; deeper non-group xml such as `DropdownData/` is excluded)
+- any `*.osp` where path contains `CalienteTools/BodySlide/SliderSets/` (recursive - real packs nest per-set folders)
+- any `*.xml` where path contains `CalienteTools/BodySlide/SliderGroups/` (recursive)
+- any `.xml` directly under the BodySlide root (file directly under `CalienteTools/BodySlide/` with no extra subfolder, e.g. `CalienteTools/BodySlide/*.xml`; deeper non-group xml such as `DropdownData/` is excluded) - also via substring `CalienteTools/BodySlide/` + filename check
 
-### PhysicsDetector (2.3.2)
+### PhysicsDetector (2.3.2) + FOMOD/nested fix (Sprint 2.6)
 
-- any file whose NAME contains `hdt`/`smp`/`cbpc`/`physics` (case-insensitive) anywhere in the folder
-- under `SKSE/Plugins/`: the exact `hdtSMP64.dll`, `hdtSMP.xml`, `config.xml` plus every `*.json` (CBPC configs, recursive)
-- `*.tri` morphs - ONLY when the file's directory equals or is nested under a folder that received a ProvidedSet mesh (set mesh paths come from the assembled sets, so unrelated morphs are never flagged)
+- any file whose NAME contains `hdt`/`smp`/`cbpc`/`physics` (case-insensitive) anywhere in the folder (already handles nested via `DonorTree` enumeration)
+- under `SKSE/Plugins/` (segment anywhere, not just at root) - via `IndexOf("SKSE/Plugins")`: the exact `hdtSMP64.dll`, `hdtSMP.xml`, `config.xml` plus every `*.json` (CBPC configs, recursive) - handles `Fomod/Main/SKSE/Plugins/...` etc.
+- `*.tri` morphs - ONLY when the file's directory contains a ProvidedSet mesh folder as substring (not just prefix) - handles nested `01 Core/data/meshes/...` vs `meshes/...` game-relative mismatch via `IndexOf`
 
 Rules overlap (`hdtSMP64.dll` matches the token rule AND the exact-name rule) - the output is deduped, ordinal.
 

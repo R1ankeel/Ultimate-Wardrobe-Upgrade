@@ -62,8 +62,7 @@ public sealed class PhysicsDetector
             }
 
             if (name.EndsWith(".tri", StringComparison.OrdinalIgnoreCase) &&
-                setMeshDirs.Any(d => directory.Equals(d, StringComparison.Ordinal) ||
-                                     directory.StartsWith(d + "/", StringComparison.Ordinal)))
+                setMeshDirs.Any(d => directory.IndexOf(d, StringComparison.Ordinal) >= 0))
             {
                 found.Add(path);
             }
@@ -73,8 +72,8 @@ public sealed class PhysicsDetector
 
         static bool underSksePlugins(string directory)
         {
-            return directory.Equals("SKSE/Plugins", StringComparison.Ordinal) ||
-                   directory.StartsWith("SKSE/Plugins/", StringComparison.Ordinal);
+            // FOMOD/nested fix: check segment anywhere, not just at start
+            return directory.IndexOf("SKSE/Plugins", StringComparison.OrdinalIgnoreCase) >= 0;
         }
     }
 
