@@ -12,6 +12,7 @@ public static class BipedSlotMapper
     /// Frozen flag -> slot table (Sprint 1.0.5, plan section 4.5). Order is the canonical
     /// precedence: the FIRST flag in this order that is set within a record is its primary
     /// slot, and the order doubles as the piece ordering inside a variant.
+    /// Note: IronHelmet uses Hair+Circlet (31 Hair) not Head (30) - intentional per vanilla ARMO flags (ArmorIronHelmet BOD2 Hair,Circlet), see RealDataScannerTests.
     /// </summary>
     public static readonly IReadOnlyList<(BipedObjectFlag Flag, int Slot, string Name)> Table =
     [

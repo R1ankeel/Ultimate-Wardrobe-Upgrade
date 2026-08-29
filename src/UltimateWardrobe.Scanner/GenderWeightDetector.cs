@@ -79,22 +79,23 @@ public static class GenderWeightDetector
     }
 
     /// <summary>
-    /// Detects the gender options of an armor. Resolution order (Sprint 1.4.2):
-    /// 1) explicit gender-specific ARMO markers (EditorID suffix, then mesh-path folder), else
-    /// 2) ARMA world-model / weight-slider signals (frozen in Sprint 1.0.5): both genders
-    ///    signaled -> Male + Female; one -> that gender; else
-    /// 3) a playable-race hint from the ARMA race EditorID (Female/Male marker), else
-    /// 4) <see cref="Gender.Unisex"/> with a <see cref="ScanWarning"/>.
+    /// Detects the gender options of an armor. Resolution order (Sprint 1.4.2, revised in F1):
+    /// 1) explicit EditorID suffix token (e.g. "_female", "-male") - intentional gender-specific ARMO, wins over every ARMA signal,
+    /// 2) ARMA world-model / weight-slider signals (frozen in Sprint 1.0.5): both genders signaled -> Male + Female; one -> that gender,
+    /// 3) mesh-path folder fallback ("female"/"male" segment) - only when ARMA signals are absent (no model/slider for either gender),
+    /// 4) a playable-race hint from the ARMA race EditorID (Female/Male marker), else
+    /// 5) <see cref="Gender.Unisex"/> with a <see cref="ScanWarning"/>.
+    /// Mesh folder no longer overrides a dual-model ARMA (e.g. Iron `Armor/Iron/Male/...` with both male and female world models must stay Male+Female).
     /// </summary>
     public static IReadOnlyList<Gender> DetectGenders(CorrelatedArmor armor, RecordIndex index, List<ScanWarning> warnings)
     {
-        var explicitGender = ExplicitFromEditorId(armor.EditorId) ?? ExplicitFromMeshPath(armor.MeshPath);
-        if (explicitGender is not null)
+        var explicitFromId = ExplicitFromEditorId(armor.EditorId);
+        if (explicitFromId is not null)
         {
-            return new[] { explicitGender.Value };
+            return new[] { explicitFromId.Value };
         }
 
-        var signals = ArmaSignals(armor.FirstAddon);
+        var signals = ArmaSignals(armor);
         if (signals.Male && signals.Female)
         {
             return new[] { Gender.Male, Gender.Female };
@@ -108,6 +109,30 @@ public static class GenderWeightDetector
         if (signals.Female)
         {
             return new[] { Gender.Female };
+        }
+
+        // Mesh-folder fallback - use per-gender meshes if available (F2), otherwise legacy MeshPath
+        var meshForFallback = armor.MeshPathMale ?? armor.MeshPathFemale ?? armor.MeshPath;
+        // If both per-gender meshes exist but signals were empty, check both for fallback ambiguity
+        string? fallbackMesh = meshForFallback;
+        if (armor.MeshPathMale is not null && armor.MeshPathFemale is not null)
+        {
+            var maleSeg = ExplicitFromMeshPath(armor.MeshPathMale);
+            var femaleSeg = ExplicitFromMeshPath(armor.MeshPathFemale);
+            if (maleSeg is not null && femaleSeg is not null)
+            {
+                fallbackMesh = null; // ambiguous - both genders present across per-gender meshes
+            }
+            else
+            {
+                fallbackMesh = armor.MeshPathMale ?? armor.MeshPathFemale;
+            }
+        }
+
+        var explicitFromMesh = ExplicitFromMeshPath(fallbackMesh);
+        if (explicitFromMesh is not null)
+        {
+            return new[] { explicitFromMesh.Value };
         }
 
         var raceHint = RaceGenderHint(ResolveRace(armor, index));
@@ -146,7 +171,9 @@ public static class GenderWeightDetector
 
     /// <summary>
     /// Returns an explicit gender from a mesh path folder segment, or null when the path
-    /// contains no (or both) gender markers. The EditorID signal wins when both are present.
+    /// contains no (or both) gender markers. This is a fallback only when ARMA world-model / weight-slider
+    /// signals are absent - it must not override a dual-model ARMA (e.g. Iron `Armor/Iron/Male/...` with both
+    /// male and female world models is Male+Female, not Male-only). The EditorID signal wins when both are present.
     /// </summary>
     public static Gender? ExplicitFromMeshPath(string? meshPath)
     {
@@ -216,6 +243,35 @@ public static class GenderWeightDetector
         }
 
         return race;
+    }
+
+    private static (bool Male, bool Female) ArmaSignals(CorrelatedArmor armor)
+    {
+        if (armor.AllAddons.Count > 0)
+        {
+            var male = false;
+            var female = false;
+            foreach (var addon in armor.AllAddons)
+            {
+                var (m, f) = ArmaSignals(addon);
+                male |= m;
+                female |= f;
+                if (male && female)
+                {
+                    break;
+                }
+            }
+
+            // Also include FirstAddon if AllAddons was empty due to no armature but FirstAddon set (should not happen)
+            if (!male && !female && armor.FirstAddon is not null)
+            {
+                return ArmaSignals(armor.FirstAddon);
+            }
+
+            return (male, female);
+        }
+
+        return ArmaSignals(armor.FirstAddon);
     }
 
     private static (bool Male, bool Female) ArmaSignals(IArmorAddonGetter? addon)

@@ -76,7 +76,9 @@ public sealed class PatcherRealDataIntegrationTests
         var ironSet = Assert.Single(
             catalog.Sets,
             s => s.Variants.SelectMany(v => v.Pieces).Any(p => p.EditorId == "ArmorIronCuirass"));
-        var ironVariant = Assert.Single(ironSet.Variants, v => v.Pieces.Any(p => p.EditorId == "ArmorIronCuirass"));
+        // F1 fix: iron now correctly has Male and Female variants (both contain the cuirass). Pick Male deterministically if present, otherwise first.
+        var ironVariant = ironSet.Variants.FirstOrDefault(v => v.Gender == Gender.Male && v.Pieces.Any(p => p.EditorId == "ArmorIronCuirass"))
+                          ?? ironSet.Variants.First(v => v.Pieces.Any(p => p.EditorId == "ArmorIronCuirass"));
         var targetGender = ironVariant.Gender;
         _output.WriteLine($"[patcher-integration] Iron set '{ironSet.Id}': Variant gender={targetGender}, Pieces={string.Join(",", ironVariant.Pieces.Select(p => p.EditorId))}");
 

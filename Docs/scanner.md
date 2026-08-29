@@ -16,7 +16,7 @@ All reading goes through Mutagen binary overlays (`SkyrimMod.CreateFromBinaryOve
 | `LoadOrderBuilder.cs:1` | Masters-first recursive order (cycle-safe), dedupe, alphabetical tail |
 | `ModLoader.cs:1` | Per-plugin overlay load, degrade on corrupt plugins (skip + warning) |
 | `RecordIndex.cs:1` | Merged `Dictionary<FormKey, T>` for ARMO/ARMA/KEYW/TXST + OTFT/RACE extension |
-| `ArmorCorrelator.cs:1` | ARMO -> first-resolvable ARMA -> mesh/texture paths (`CorrelatedArmor`) |
+| `ArmorCorrelator.cs:1` | ARMO -> all-resolvable ARMAs -> per-gender mesh/texture paths (`CorrelatedArmor` with `MeshPathMale`/`MeshPathFemale`/`AllAddons`, F2) |
 | `FileResolver.cs:1` | Logical loose-file existence across Data / no-Data layouts, `MissingFiles` accounting |
 | `PlayableRaceFilter.cs:1` | Playable-race whitelist (10 base + 10 vampire RACE EditorIDs, verified against real Skyrim.esm) + `DefaultRace` universal fallback |
 | `KeyNormalizer.cs:1` | EditorID / Outfit EditorID / mesh-folder -> normalized set key + DisplayName |
@@ -25,8 +25,8 @@ All reading goes through Mutagen binary overlays (`SkyrimMod.CreateFromBinaryOve
 | `ArmorSetGrouper.cs:1` | Creature pre-filter -> Outfit-first -> EDID/mesh fallback -> `GroupedSet`s + skip counts |
 | `VanillaEnchantmentFilter.cs:1` | Vanilla enchantment name-suffix skip (longest-first word match, `OrdinalIgnoreCase`) |
 | `BipedSlotMapper.cs:1` | Frozen BOD2 slot table (from planning 1.0.5), `SlotIndex` + `ToSlotString` |
-| `GenderWeightDetector.cs:1` | WeightClass from KEYW (ArmorType bonus), gender from ID/mesh/ARMA signals |
-| `VariantAssembler.cs:1` | `(Gender, Weight)` variants per `ArmorSet`, piece split + ordering |
+| `GenderWeightDetector.cs:1` | WeightClass from KEYW (ArmorType bonus), gender from ID/ARMA signals/mesh fallback (F1: ARMA signals win over mesh) |
+| `VariantAssembler.cs:1` | `(Gender, Weight)` variants per `ArmorSet`, per-gender mesh split + ordering (F2) |
 | `FolderCatalogScanner.cs:1` | Sprint 1.5 orchestrator: discovery -> order -> index -> correlate -> group -> assemble -> `Catalog`; structured `ILogger<T>` milestone events (Sprint 1.7) |
 | `ScanReportBuilder.cs:1` | Warning dedup/sort, `ScanStats` fill, per-record exception routing to `CatalogScanException` |
 | `CatalogCacheStore.cs:1` | Canonical JSON persistence, `CatalogSource` converter, `IsFresh` probe comparison |
@@ -65,6 +65,10 @@ Before any grouping the grouper resolves the primary (first resolvable) ARMA rac
 
 An ARMO belonging to at least one OTFT collects candidate keys - the EDID/mesh fallback key (stage 2) plus every normalized Outfit EditorID (same `KeyNormalizer` pipeline, no piece-suffix strip). `ArmorSetGrouper.MergeByAgreement` scores each candidate by how many same-family members vote for it and keeps the top-voting key, tie-broken alphabetically, so multi-outfit armor lands with the set the majority of its pieces actually belong to. Before the vote `FilterWardrobeOutfits` drops NPC-wardrobe outfit keys whose carriers span more than one EDID family unless every carrier in that outfit is exclusive to it (`OutfitIds.Count == 1`); a named armor Outfit like `IronArmor` survives, while generic compositions such as `cwmission04outfitimperial` (which dress unrelated families in base-game armor) no longer swallow whole sets. Armor in no Outfit falls through to stage 2.
 
+#### Id discoverability - F3 clarification (no code change)
+
+Outfit-driven Ids are winner keys when at least one member belongs to an outfit. `steel` vs `steelplate` is by material (Steel = `ArmorSteel*` -> `steel`, Steel Plate = `ArmorSteelPlate*`/`NordPlate` -> `steelplate` or `nordicplate`/`steelplatealloutfit` when outfit `SteelPlateAllOutfit` wins) - display-name search is the supported UI, not Id exact match. Known vanilla aliases for consumer code (not scanner): `Fur Armor` -> `bandit` (`ArmorBandit*` EditorIDs), `Leather Armor` -> `leatheralloutfit` (outfit `LeatherAllOutfit` wins over EDID `leather` because all 4 carriers share one family, so kept), `Chitin Armor` light -> `chitin` vs `Chitin Heavy Armor` -> `chitinheavy`, `Scaled Horn Armor` -> `scaled` (same family as `Scaled Armor` plus `ScaledHorn` variant). `FilterWardrobeOutfits` verification: `leatheralloutfit` has `families.Count == 1` so kept - correct; `cwmission04outfitimperial` has `families.Count > 1` (Iron/Steel/Leather) and not allExclusive (`OutfitIds.Count != 1` for some carriers) -> dropped - correct. No change unless new fragmentation found.
+
 ### EDID/mesh fallback stage
 
 `KeyNormalizer` strips CC prefixes (`cc*-ba_`), set prefixes (`Armor`, `Clothes`, `Clothing`, `AA`, `AANord`, `DLC1`, `DLC2`, `zzz`), the `AA`/`ba` marker, piece suffixes (`Cuirass`, `Gauntlets`, `Boots`, `Helmet`, `Hood`, `Shield`, `Circlet`, `Plate`, `Robe`, ...), a single trailing variant letter when the stem still ends in a piece suffix (`ArmorSteelBootsA` -> `steel`, so the A/B-divided Steel set groups under one key; 1.7.3), and stop words (`No`, `Yes`), then keeps alphanumerics, lowercases invariant, and produces a CamelCase Title-case `DisplayName`. If no meaningful middle remains, the ARMA mesh folder segment after `armor`/`clothes` (suffixes `male`/`female`/`_0`/`_1`/`_1st` stripped) is used.
@@ -89,18 +93,20 @@ Sets ordered by normalized Id (ordinal). Members within a set ordered by BOD2 sl
 
 `GenderWeightDetector.DetectWeight` resolves WeightClass from keywords first, priority Heavy > Light > Clothing. Without a weight keyword it falls back to `BodyTemplate.ArmorType` (`HeavyArmor` -> Heavy, `LightArmor` -> Light, `Clothing` -> Clothing), and without either it returns `Any`. An unresolvable keyword link leaves the record at this fallback, never `Any` prematurely.
 
-### Gender (signals)
+### Gender (signals) - F1 fix
 
-Explicit markers win before any ARMA signal reading:
+ARMA signals now win over mesh folder (mesh is fallback only when signals absent) - prevents `Armor/Iron/Male/...` with both male and female world models being forced to Male-only:
 
-1. EditorID suffix tokens, longest first, case-insensitive: `_female`, `-female`, `_male`, `-male`, `female`, `male`, `_f`, `-f`, `_m`, `-m`.
-2. ARMA mesh path folder segments (`female` or `male`); both genders present in the same path is ambiguous and falls through to signals.
+1. EditorID suffix tokens, longest first, case-insensitive: `_female`, `-female`, `_male`, `-male`, `female`, `male`, `_f`, `-f`, `_m`, `-m` - explicit gender-specific ARMO, wins over every ARMA signal.
+2. ARMA signals per gender side: a non-null `WorldModel.{Gender}.File` OR the `WeightSliderEnabled.{Gender}` bool. A gender side counts as present when either signal is true - both signaled -> Male + Female; one -> that gender.
+3. Mesh path folder segments (`female` or `male`) - fallback only when ARMA signals are absent for both genders; both genders present in the same path is ambiguous and falls through to race hint.
+4. `RaceGenderHint` (RACE EditorID contains `female`/`male`).
 
-Then ARMA signals per gender side: a non-null `WorldModel.{Gender}.File` OR the `WeightSliderEnabled.{Gender}` bool. A gender side counts as present when either signal is true. Then `RaceGenderHint` (RACE EditorID contains `female`/`male`). If nothing resolves, gender is `Unisex` with a `ScanWarning` (`Unisex` variants are skipped by the catalog scanner by design; on a real vanilla scan the signal set effectively never leaves an unresolved side).
+If nothing resolves, gender is `Unisex` with a `ScanWarning` (`Unisex` variants are skipped by the catalog scanner by design; on a real vanilla scan the signal set effectively never leaves an unresolved side). **Atomicity note:** F1 (this precedence fix) without F2 (per-gender mesh storage in `ArmorCorrelator`/`VariantAssembler`) makes female Iron appear in the catalog with the wrong (male) mesh - invisible in-game bug worse than the current visible absence. F1 and F2 must ship atomically (see `Plans/scaner-filtration.md:120`).
 
-### Variant assembly
+### Variant assembly - F2 per-gender mesh
 
-`VariantAssembler.Assemble` turns one `ArmorSet` into variants - one per (Gender, Weight) combination. The same ARMO backed by two gender-specific ARMA yields two Pieces (same EditorId, different gender) - matching `PieceMapping.UniqueKey` (`OverhaulId + TargetPieceEditorId + TargetGender`). Pieces are slot-ordered via `BipedSlotMapper`, tie-broken by EditorId. An unrecognized BOD2 flag set falls back to a `BODT {uint}` slot string instead of failing.
+`VariantAssembler.Assemble` turns one `ArmorSet` into variants - one per (Gender, Weight) combination. The same ARMO backed by two gender-specific ARMA yields two Pieces (same EditorId, different gender) - matching `PieceMapping.UniqueKey` (`OverhaulId + TargetPieceEditorId + TargetGender`). F2 fix: per-gender mesh is allocated (`MeshPathMale` for Male variant, `MeshPathFemale` for Female, aggregated `AllAddons` for texture sets), so Iron Male uses `Armor/Iron/Male/...` and Iron Female uses `Armor/Iron/F/...` instead of sharing the male mesh. Pieces are slot-ordered via `BipedSlotMapper`, tie-broken by EditorId. An unrecognized BOD2 flag set falls back to a `BODT {uint}` slot string instead of failing.
 
 Frozen `Piece.Slot` format (planning 1.0.5) is produced by `BipedSlotMapper.ToSlotString`: `"{BODTnumber} {Name}"`, e.g. `32 Body`, `33 Hands`, `37 Feet`.
 

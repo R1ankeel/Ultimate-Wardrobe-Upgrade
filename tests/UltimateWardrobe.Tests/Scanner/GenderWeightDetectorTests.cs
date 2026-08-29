@@ -168,16 +168,62 @@ public sealed class GenderWeightDetectorTests
     }
 
     [Fact]
-    public void DetectGenders_ExplicitMeshFolder_OverridesSignals()
+    public void DetectGenders_ExplicitMeshFolder_DoesNotOverrideSignals_WhenBothPresent()
     {
         using var dir = new TestTempDir();
         var index = BuildIndex(dir, out _);
+        // Mesh folder indicates female, but ARMA has both male and female models + sliders.
+        // F1 fix: ARMA signals win over mesh folder, so result must be Male+Female.
         var armor = MakeCorrelated(
             MakeSignalArmor("IronCuirass", Key(0x208), maleModel: true, femaleModel: true),
             meshPath: "meshes/armor/iron/female/cuirass.nif");
 
         var genders = GenderWeightDetector.DetectGenders(armor, index, new List<ScanWarning>());
+        Assert.Equal(new[] { Gender.Male, Gender.Female }, genders);
+    }
+
+    [Fact]
+    public void DetectGenders_MeshFolderFallback_WhenNoSignals()
+    {
+        using var dir = new TestTempDir();
+        var index = BuildIndex(dir, out _);
+        // No ARMA model/slider for either gender - mesh folder becomes the fallback signal (F1).
+        var armor = MakeCorrelated(
+            MakeSignalArmor("IronCuirassFallback", Key(0x20C), maleModel: false, femaleModel: false),
+            meshPath: "meshes/armor/iron/female/cuirass.nif");
+
+        var genders = GenderWeightDetector.DetectGenders(armor, index, new List<ScanWarning>());
         Assert.Equal(new[] { Gender.Female }, genders);
+    }
+
+    [Fact]
+    public void DetectGenders_IronLikeMaleMesh_WithDualSignals_ReturnsBothGenders_Regression()
+    {
+        using var dir = new TestTempDir();
+        var index = BuildIndex(dir, out _);
+        // Reproduces the vanilla Iron bug: mesh path is male ("Armor/Iron/Male/...") but ARMA has both
+        // male and female world models plus weight sliders (True/True). Old code returned Male only because
+        // ExplicitFromMeshPath ("male") won before ArmaSignals. F1 must return Male+Female.
+        var armor = MakeCorrelated(
+            MakeSignalArmor("ArmorIronCuirass", Key(0x20D), maleModel: true, femaleModel: true, maleSlider: true, femaleSlider: true),
+            meshPath: "meshes/armor/iron/male/cuirass_1.nif");
+
+        var genders = GenderWeightDetector.DetectGenders(armor, index, new List<ScanWarning>());
+        Assert.Equal(new[] { Gender.Male, Gender.Female }, genders);
+    }
+
+    [Fact]
+    public void DetectGenders_StuddedLikeMaleMesh_WithDualSignals_ReturnsBothGenders_Regression()
+    {
+        using var dir = new TestTempDir();
+        var index = BuildIndex(dir, out _);
+        // Same for Studded/Leather: "Armor/Studded/Male/..." with dual signals.
+        var armor = MakeCorrelated(
+            MakeSignalArmor("ArmorLeatherCuirass", Key(0x20E), maleModel: true, femaleModel: true, maleSlider: true, femaleSlider: true),
+            meshPath: "meshes/armor/studded/male/body_1.nif");
+
+        var genders = GenderWeightDetector.DetectGenders(armor, index, new List<ScanWarning>());
+        Assert.Equal(new[] { Gender.Male, Gender.Female }, genders);
     }
 
     [Fact]

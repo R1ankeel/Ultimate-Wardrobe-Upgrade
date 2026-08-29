@@ -57,12 +57,35 @@ public static class VariantAssembler
                     order.Add(key);
                 }
 
+                // F2: per-gender mesh and ARMA id (male mesh for Male variant, female mesh for Female)
+                string? meshPath;
+                string? armaEditorId;
+                if (gender == Gender.Male)
+                {
+                    meshPath = member.MeshPathMale ?? member.MeshPath;
+                    armaEditorId = member.ArmaEditorIdMale ?? member.ArmaEditorId;
+                }
+                else if (gender == Gender.Female)
+                {
+                    meshPath = member.MeshPathFemale ?? member.MeshPath;
+                    armaEditorId = member.ArmaEditorIdFemale ?? member.ArmaEditorId;
+                }
+                else
+                {
+                    // Unisex - use whatever is available (male preferred, then female)
+                    meshPath = member.MeshPathMale ?? member.MeshPathFemale ?? member.MeshPath;
+                    armaEditorId = member.ArmaEditorId;
+                }
+
+                // Fallback: if per-gender mesh is still null but ARMA has opposite gender mesh, reuse available
+                meshPath ??= member.MeshPath;
+
                 pieces.Add((slotIndex, new Piece(
                     member.EditorId,
                     member.FormId,
                     slot,
-                    member.ArmaEditorId,
-                    member.MeshPath,
+                    armaEditorId,
+                    meshPath,
                     member.TexturePaths)));
             }
         }

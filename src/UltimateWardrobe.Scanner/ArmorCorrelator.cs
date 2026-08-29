@@ -23,7 +23,17 @@ public sealed class CorrelatedArmor
 
     public string? ArmaEditorId { get; init; }
 
+    public string? ArmaEditorIdMale { get; init; }
+
+    public string? ArmaEditorIdFemale { get; init; }
+
     public string? MeshPath { get; init; }
+
+    public string? MeshPathMale { get; init; }
+
+    public string? MeshPathFemale { get; init; }
+
+    public IReadOnlyList<IArmorAddonGetter> AllAddons { get; init; } = Array.Empty<IArmorAddonGetter>();
 
     public IReadOnlyList<string> TexturePaths { get; init; } = Array.Empty<string>();
 
@@ -76,8 +86,13 @@ public sealed class ArmorCorrelator
 
         IArmorAddonGetter? firstAddon = null;
         string? armaEditorId = null;
+        string? armaEditorIdMale = null;
+        string? armaEditorIdFemale = null;
         string? meshPath = null;
+        string? meshPathMale = null;
+        string? meshPathFemale = null;
         var raceLink = new FormLinkNullable<IRaceGetter>();
+        var allAddons = new List<IArmorAddonGetter>();
 
         var armature = armor.Armature;
         if (armature is not null)
@@ -91,11 +106,42 @@ public sealed class ArmorCorrelator
 
                 if (index.TryResolveArmorAddon(link.FormKey, out var addon))
                 {
-                    firstAddon = addon;
-                    armaEditorId = addon.EditorID;
-                    raceLink = new FormLinkNullable<IRaceGetter>(addon.Race.FormKey);
-                    meshPath = ResolveMeshPath(addon);
-                    break;
+                    allAddons.Add(addon);
+                    if (firstAddon is null)
+                    {
+                        firstAddon = addon;
+                        armaEditorId = addon.EditorID;
+                        raceLink = new FormLinkNullable<IRaceGetter>(addon.Race.FormKey);
+                        meshPath = ResolveMeshPath(addon);
+                    }
+
+                    // Per-gender mesh and ARMA tracking (F2 fix)
+                    var maleFile = addon.WorldModel?.Male?.File;
+                    if (meshPathMale is null && maleFile is not null && !maleFile.IsNull && !string.IsNullOrWhiteSpace(maleFile.GivenPath))
+                    {
+                        meshPathMale = maleFile.GivenPath.Replace('\\', '/');
+                        armaEditorIdMale ??= addon.EditorID;
+                    }
+
+                    var femaleFile = addon.WorldModel?.Female?.File;
+                    if (meshPathFemale is null && femaleFile is not null && !femaleFile.IsNull && !string.IsNullOrWhiteSpace(femaleFile.GivenPath))
+                    {
+                        meshPathFemale = femaleFile.GivenPath.Replace('\\', '/');
+                        armaEditorIdFemale ??= addon.EditorID;
+                    }
+
+                    // If addon has no explicit model for a gender but slider signals that gender, keep ARMA id as fallback
+                    if (armaEditorIdMale is null && addon.WeightSliderEnabled?.Male == true)
+                    {
+                        armaEditorIdMale = addon.EditorID;
+                    }
+
+                    if (armaEditorIdFemale is null && addon.WeightSliderEnabled?.Female == true)
+                    {
+                        armaEditorIdFemale = addon.EditorID;
+                    }
+
+                    continue;
                 }
 
                 warnings.Add(new ScanWarning(
@@ -105,7 +151,28 @@ public sealed class ArmorCorrelator
             }
         }
 
-        var texturePaths = ResolveTexturePaths(armor, editorId, firstAddon, index, warnings);
+        // Fallback per-gender meshes from first addon if still null (already handled above, but keep for edge)
+        if (meshPathMale is null && firstAddon?.WorldModel?.Male?.File is { } mf2 && !mf2.IsNull && !string.IsNullOrWhiteSpace(mf2.GivenPath))
+        {
+            meshPathMale = mf2.GivenPath.Replace('\\', '/');
+            armaEditorIdMale ??= firstAddon.EditorID;
+        }
+
+        if (meshPathFemale is null && firstAddon?.WorldModel?.Female?.File is { } ff2 && !ff2.IsNull && !string.IsNullOrWhiteSpace(ff2.GivenPath))
+        {
+            meshPathFemale = ff2.GivenPath.Replace('\\', '/');
+            armaEditorIdFemale ??= firstAddon.EditorID;
+        }
+
+        // Ensure per-gender ARMA ids fall back to firstAddon if not set
+        armaEditorIdMale ??= armaEditorId;
+        armaEditorIdFemale ??= armaEditorId;
+
+        // Backward-compat MeshPath already set to first addon's first non-null (male preferred)
+        // If still null but we have per-gender meshes, use male as fallback
+        meshPath ??= meshPathMale ?? meshPathFemale;
+
+        var texturePaths = ResolveTexturePaths(armor, editorId, allAddons, firstAddon, index, warnings);
 
         return new CorrelatedArmor
         {
@@ -114,7 +181,12 @@ public sealed class ArmorCorrelator
             Armor = armor,
             FirstAddon = firstAddon,
             ArmaEditorId = armaEditorId,
+            ArmaEditorIdMale = armaEditorIdMale,
+            ArmaEditorIdFemale = armaEditorIdFemale,
             MeshPath = meshPath,
+            MeshPathMale = meshPathMale,
+            MeshPathFemale = meshPathFemale,
+            AllAddons = allAddons,
             TexturePaths = texturePaths,
             WeaponKeywordIds = keywordIds,
             BipedFlags = armor.BodyTemplate?.FirstPersonFlags ?? (BipedObjectFlag)0,
@@ -162,33 +234,48 @@ public sealed class ArmorCorrelator
     private IReadOnlyList<string> ResolveTexturePaths(
         IArmorGetter armor,
         string editorId,
-        IArmorAddonGetter? addon,
+        IReadOnlyList<IArmorAddonGetter> allAddons,
+        IArmorAddonGetter? firstAddon,
         RecordIndex index,
         List<ScanWarning> warnings)
     {
-        if (addon?.SkinTexture is null)
+        var addonsToCheck = allAddons.Count > 0 ? allAddons : (firstAddon is not null ? new[] { firstAddon } : Array.Empty<IArmorAddonGetter>());
+
+        if (addonsToCheck.Count == 0)
         {
             return Array.Empty<string>();
         }
 
-        var maleSet = addon.SkinTexture.Male;
-        var femaleSet = addon.SkinTexture.Female;
-
         var textureSets = new HashSet<ITextureSetGetter>();
-        foreach (var link in new[] { maleSet, femaleSet })
+        var hadSkinTextureLink = false;
+        foreach (var curAddon in addonsToCheck)
         {
-            if (link is null || link.FormKey.IsNull || !index.TryResolveTextureSet(link.FormKey, out var textureSet))
+            if (curAddon.SkinTexture is null)
             {
                 continue;
             }
 
-            textureSets.Add(textureSet);
+            var maleSet = curAddon.SkinTexture.Male;
+            var femaleSet = curAddon.SkinTexture.Female;
+            if ((maleSet is not null && !maleSet.FormKey.IsNull) || (femaleSet is not null && !femaleSet.FormKey.IsNull))
+            {
+                hadSkinTextureLink = true;
+            }
+
+            foreach (var link in new[] { maleSet, femaleSet })
+            {
+                if (link is null || link.FormKey.IsNull || !index.TryResolveTextureSet(link.FormKey, out var textureSet))
+                {
+                    continue;
+                }
+
+                textureSets.Add(textureSet);
+            }
         }
 
         if (textureSets.Count == 0)
         {
-            if ((maleSet is not null && !maleSet.FormKey.IsNull)
-                || (femaleSet is not null && !femaleSet.FormKey.IsNull))
+            if (hadSkinTextureLink)
             {
                 warnings.Add(new ScanWarning(
                     $"Armor '{editorId}' (FormId {armor.FormKey.IDString()}) references a skin texture set that could not be " +

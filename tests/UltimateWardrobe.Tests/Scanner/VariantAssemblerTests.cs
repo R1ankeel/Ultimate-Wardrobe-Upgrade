@@ -161,6 +161,90 @@ public sealed class VariantAssemblerTests
         Assert.Equal("BODT 0", piece.Slot);
     }
 
+    [Fact]
+    public void IronSet_FemaleVariantUsesFemaleMesh_PerGenderMesh()
+    {
+        using var dir = new TestTempDir();
+        var index = GroupingTestHarness.BuildIndex(dir, out _);
+        // Simulate Iron-like per-gender meshes: male = Armor/Iron/Male/... female = Armor/Iron/F/...
+        var member = MakeMemberWithPerGenderMesh(
+            "IronCuirassPerGender",
+            Key(0x210),
+            "meshes/armor/iron/male/cuirass_1.nif",
+            "meshes/armor/iron/f/cuirass_1.nif",
+            BipedObjectFlag.Body,
+            ArmorType.HeavyArmor);
+
+        var result = SingleSetGrouping("pergender", "Per Gender", member);
+        var warnings = new List<ScanWarning>();
+
+        var sets = VariantAssembler.Assemble(result, index, warnings);
+
+        var set = Assert.Single(sets);
+        Assert.Equal(2, set.Variants.Count);
+        var male = set.Variants.Single(v => v.Gender == Gender.Male);
+        var female = set.Variants.Single(v => v.Gender == Gender.Female);
+        var malePiece = Assert.Single(male.Pieces);
+        var femalePiece = Assert.Single(female.Pieces);
+        Assert.Equal("meshes/armor/iron/male/cuirass_1.nif", malePiece.MeshPath);
+        Assert.Equal("meshes/armor/iron/f/cuirass_1.nif", femalePiece.MeshPath);
+        Assert.NotEqual(malePiece.MeshPath, femalePiece.MeshPath);
+        Assert.Equal("IronCuirassPerGenderAA_M", malePiece.ArmaEditorId);
+        Assert.Equal("IronCuirassPerGenderAA_F", femalePiece.ArmaEditorId);
+    }
+
+    [Fact]
+    public void DualArmaSplit_GenderAggregation_ReturnsBothGenders_AndPerGenderMesh()
+    {
+        using var dir = new TestTempDir();
+        var index = GroupingTestHarness.BuildIndex(dir, out _);
+        // One ARMA male-only, another female-only - aggregation should yield both genders and correct meshes
+        var maleAddon = new ArmorAddon(Key(0x211), SkyrimRelease.SkyrimSE)
+        {
+            EditorID = "SplitArmorAA_M",
+            WorldModel = new GenderedItem<Model?>(Model("meshes/armor/split/male.nif"), null),
+            WeightSliderEnabled = new GenderedItem<bool>(true, false),
+        };
+        var femaleAddon = new ArmorAddon(Key(0x212), SkyrimRelease.SkyrimSE)
+        {
+            EditorID = "SplitArmorAA_F",
+            WorldModel = new GenderedItem<Model?>(null, Model("meshes/armor/split/female.nif")),
+            WeightSliderEnabled = new GenderedItem<bool>(false, true),
+        };
+        var armor = new Armor(Key(0x213), SkyrimRelease.SkyrimSE)
+        {
+            EditorID = "SplitArmor",
+            BodyTemplate = new BodyTemplate { FirstPersonFlags = BipedObjectFlag.Body, ArmorType = ArmorType.HeavyArmor },
+        };
+        var correlated = new CorrelatedArmor
+        {
+            EditorId = "SplitArmor",
+            FormId = Key(0x213).ID,
+            Armor = armor,
+            FirstAddon = maleAddon,
+            AllAddons = new[] { maleAddon, femaleAddon },
+            MeshPathMale = "meshes/armor/split/male.nif",
+            MeshPathFemale = "meshes/armor/split/female.nif",
+            ArmaEditorIdMale = maleAddon.EditorID,
+            ArmaEditorIdFemale = femaleAddon.EditorID,
+            MeshPath = "meshes/armor/split/male.nif",
+            BipedFlags = BipedObjectFlag.Body,
+        };
+
+        var genders = GenderWeightDetector.DetectGenders(correlated, index, new List<ScanWarning>());
+        Assert.Equal(new[] { Gender.Male, Gender.Female }, genders);
+
+        var result = SingleSetGrouping("split", "Split", correlated);
+        var warnings = new List<ScanWarning>();
+        var sets = VariantAssembler.Assemble(result, index, warnings);
+        var set = Assert.Single(sets);
+        Assert.Equal(2, set.Variants.Count);
+        var male = set.Variants.Single(v => v.Gender == Gender.Male);
+        var female = set.Variants.Single(v => v.Gender == Gender.Female);
+        Assert.Equal("meshes/armor/split/male.nif", Assert.Single(male.Pieces).MeshPath);
+        Assert.Equal("meshes/armor/split/female.nif", Assert.Single(female.Pieces).MeshPath);
+    }
+
     private static GroupingResult SingleSetGrouping(string id, string displayName, CorrelatedArmor member)
     {
         return new GroupingResult
@@ -206,11 +290,62 @@ public sealed class VariantAssemblerTests
         };
     }
 
+    private static CorrelatedArmor MakeMemberWithPerGenderMesh(
+        string editorId,
+        FormKey key,
+        string maleMesh,
+        string femaleMesh,
+        BipedObjectFlag flags,
+        ArmorType armorType)
+    {
+        var maleAddon = new ArmorAddon(new FormKey(key.ModKey, key.ID + 100), SkyrimRelease.SkyrimSE)
+        {
+            EditorID = editorId + "AA_M",
+            WorldModel = new GenderedItem<Model?>(Model(maleMesh), null),
+            WeightSliderEnabled = new GenderedItem<bool>(true, false),
+        };
+        var femaleAddon = new ArmorAddon(new FormKey(key.ModKey, key.ID + 200), SkyrimRelease.SkyrimSE)
+        {
+            EditorID = editorId + "AA_F",
+            WorldModel = new GenderedItem<Model?>(null, Model(femaleMesh)),
+            WeightSliderEnabled = new GenderedItem<bool>(false, true),
+        };
+        var armor = new Armor(key, SkyrimRelease.SkyrimSE)
+        {
+            EditorID = editorId,
+            BodyTemplate = new BodyTemplate { FirstPersonFlags = flags, ArmorType = armorType },
+        };
+        return new CorrelatedArmor
+        {
+            EditorId = editorId,
+            FormId = key.ID,
+            Armor = armor,
+            FirstAddon = maleAddon,
+            AllAddons = new[] { maleAddon, femaleAddon },
+            MeshPathMale = maleMesh,
+            MeshPathFemale = femaleMesh,
+            ArmaEditorIdMale = maleAddon.EditorID,
+            ArmaEditorIdFemale = femaleAddon.EditorID,
+            MeshPath = maleMesh,
+            ArmaEditorId = maleAddon.EditorID,
+            BipedFlags = flags,
+        };
+    }
+
     private static Model? Model()
     {
         var model = new Model();
         var file = new AssetLink<SkyrimModelAssetType>();
         Assert.True(file.TrySetPath("meshes/armor/test/mesh.nif"), "Model path was rejected (must be a full path).");
+        model.File = file;
+        return model;
+    }
+
+    private static Model? Model(string path)
+    {
+        var model = new Model();
+        var file = new AssetLink<SkyrimModelAssetType>();
+        Assert.True(file.TrySetPath(path), $"Model path '{path}' was rejected (must be a full path).");
         model.File = file;
         return model;
     }
