@@ -559,6 +559,24 @@ public sealed class ArmorSetDetailViewModel : ObservableObject
             mappings.Any(m => m.PhysicsPatchAssetId == o.Asset.ImportId));
     }
 
+    private void AssignDonorForRow(PieceInventoryRowViewModel row)
+    {
+        if (!IsOpen || _overhaul is null || _overhaul.Catalog is null) return;
+        if (row.SelectedDonor is null) return;
+        var donor = row.SelectedDonor.Asset;
+        var targetPiece = row.Piece;
+        var donorPiece = DonorCompatibility.FindDonorPiece(donor, row.Gender, targetPiece.Slot);
+        if (donorPiece is null)
+        {
+            _logger.LogWarning(
+                "Donor {Donor} provides no {Gender} piece for target slot {Slot} (target {TargetPiece}) - cannot assign.",
+                DonorCompatibility.DisplayName(donor), row.Gender, targetPiece.Slot, targetPiece.EditorId);
+            return;
+        }
+        _mapping.AssignDonor(_overhaul, _overhaul.Catalog, donor, targetPiece, donorPiece);
+        AfterEdit();
+    }
+
     private PieceInventoryRowViewModel BuildRow(Piece piece)
     {
         var gender = _variant!.Gender;
@@ -578,6 +596,24 @@ public sealed class ArmorSetDetailViewModel : ObservableObject
         var status = resolveStatus(mapping, donorAsset, bodyPatch, physicsPatch);
         var donorBodyMarker = mapping is null ? null : MappingService.BodyMarkerFromPath(mapping.DonorMeshPath);
 
+        // Per-row donors - only donors that have a compatible slot for this specific piece (F2 SlotNormalizer, F1 gender-only)
+        IReadOnlyList<DonorOption> availableForRow = Array.Empty<DonorOption>();
+        DonorOption? selectedForRow = null;
+        if (_library is not null)
+        {
+            var candidates = _library.Assets
+                .Where(a => a.Kind == DonorAssetKind.FullReplacer && DonorCompatibility.IsCompatible(a, gender))
+                .Where(a => a.ProvidedSets.SelectMany(s => s.Variants).SelectMany(v => v.Pieces).Any(p => SlotNormalizer.AreCompatible(p.Slot, piece.Slot)))
+                .OrderBy(DonorCompatibility.DisplayName)
+                .Select(a => new DonorOption(a, DonorCompatibility.DisplayName(a)))
+                .ToList();
+            availableForRow = candidates;
+            if (mapping is not null)
+            {
+                selectedForRow = candidates.FirstOrDefault(o => o.Asset.ImportId == mapping.DonorAssetId);
+            }
+        }
+
         return new PieceInventoryRowViewModel(
             piece,
             gender,
@@ -586,7 +622,10 @@ public sealed class ArmorSetDetailViewModel : ObservableObject
             status,
             donorBodyMarker,
             donorAsset?.DetectedBodySlideFiles.Count > 0,
-            donorAsset?.DetectedPhysicsFiles.Count > 0);
+            donorAsset?.DetectedPhysicsFiles.Count > 0,
+            availableForRow,
+            selectedForRow,
+            row => AssignDonorForRow(row));
     }
 
     private MappingStatus resolveStatus(PieceMapping? mapping, DonorAsset? donorAsset, DonorAsset? bodyPatch, DonorAsset? physicsPatch)

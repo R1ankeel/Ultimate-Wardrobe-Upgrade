@@ -134,9 +134,10 @@ public sealed class RecentProjectsStore
             Directory.CreateDirectory(directory);
         }
 
+        var theme = GetThemeMode();
         File.WriteAllText(
             _settingsPath,
-            JsonSerializer.Serialize(new RecentSettings { RecentProjects = entries.ToList() }, JsonOptions));
+            JsonSerializer.Serialize(new RecentSettings { RecentProjects = entries.ToList(), Theme = theme }, JsonOptions));
     }
 
     private static string DefaultSettingsPath()

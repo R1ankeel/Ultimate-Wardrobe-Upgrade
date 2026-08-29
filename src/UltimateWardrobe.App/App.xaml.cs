@@ -44,6 +44,9 @@ public partial class App : Application
         _host = builder.Build();
         _host.Start();
 
+        // Eagerly apply persisted theme before any window shows - WpfUiThemeService ctor syncs ApplicationThemeManager with stored Dark/Light.
+        _host.Services.GetRequiredService<IThemeService>();
+
         var session = _host.Services.GetRequiredService<IProjectSession>();
         var picker = _host.Services.GetRequiredService<ProjectPickerWindow>();
         picker.ShowDialog();

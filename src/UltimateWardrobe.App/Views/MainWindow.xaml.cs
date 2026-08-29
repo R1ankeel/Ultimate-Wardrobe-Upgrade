@@ -38,11 +38,6 @@ public partial class MainWindow : FluentWindow
         Loaded += OnLoaded;
     }
 
-    private void OnCloseClicked(object sender, RoutedEventArgs e)
-    {
-        Close();
-    }
-
     /// <summary>
     /// Sets the app icon from the app-scope resource (Sprint 6.6 polish, roadmap 8.5). Done from
     /// code, not via a <c>{StaticResource AppIcon}</c> XAML attribute: a StaticResource on the root

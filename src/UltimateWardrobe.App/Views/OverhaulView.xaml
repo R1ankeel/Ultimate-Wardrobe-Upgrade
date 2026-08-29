@@ -19,7 +19,8 @@
       <Setter Property="HorizontalAlignment" Value="Stretch" />
       <Setter Property="VerticalAlignment" Value="Stretch" />
       <Setter Property="MinWidth" Value="160" />
-      <Setter Property="Background" Value="#11FFFFFF" />
+      <Setter Property="Background" Value="{DynamicResource ControlFillColorDefaultBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
     </Style>
     <Style x:Key="MatrixRowName" TargetType="TextBlock">
       <Setter Property="MaxWidth" Value="220" />
@@ -27,6 +28,11 @@
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="Margin" Value="0,0,12,0" />
+      <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+    </Style>
+    <!-- Default TextBlock foreground ensures black-on-dark never occurs even if theme not yet applied or on Light -->
+    <Style TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
     </Style>
   </Page.Resources>
 
@@ -68,7 +74,7 @@
               <ui:SymbolIcon Symbol="{Binding Symbol, Converter={StaticResource Symbol}}"
                              Foreground="#FF5BC0EB"
                              Margin="0,0,5,0" />
-              <TextBlock Text="{Binding Label}" FontSize="12" Opacity="0.85" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding Label}" FontSize="12" Opacity="0.85" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
             </StackPanel>
           </DataTemplate>
         </ItemsControl.ItemTemplate>
@@ -118,13 +124,17 @@
          clear of the window close button (bug 4). Selection chrome is suppressed so custom row
          templates keep their visuals and ActivateCellCommand still routes; keyboard navigation via
          ListView selection is intentionally disabled. -->
-    <ListView Grid.Row="2"
+    <ListView x:Name="MatrixListView"
+              Grid.Row="2"
               Margin="0,20,0,0"
               Visibility="{Binding IsEmpty, Converter={StaticResource InverseBoolToVis}}"
               ItemsSource="{Binding MatrixItems}"
               Background="Transparent"
               BorderThickness="0"
               Padding="0"
+              Focusable="True"
+              IsTabStop="True"
+              PreviewMouseWheel="OnListPreviewMouseWheel"
               ScrollViewer.CanContentScroll="True"
               ScrollViewer.HorizontalScrollBarVisibility="Disabled"
               ScrollViewer.VerticalScrollBarVisibility="Auto"
@@ -205,6 +215,7 @@
                         <DataTemplate DataType="{x:Type vm:CellLineViewModel}">
                           <TextBlock Text="{Binding Text}"
                                      FontSize="12"
+                                     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                      TextTrimming="CharacterEllipsis" />
                         </DataTemplate>
                       </ItemsControl.ItemTemplate>
@@ -218,133 +229,5 @@
       </ListView.Resources>
     </ListView>
 
-    <!-- Anchored single-cell editor popover (Phase 6 Sprint 6.5). PlacementTarget is set from the
-         clicked cell in code-behind; StaysOpen=false closes on outside click / focus loss; the VM
-         clears the editor on Esc (routeEvent handled in PreviewKeyDown). -->
-    <Popup x:Name="CellEditorPopup"
-           Placement="Bottom"
-           PlacementRectangle="0,0,8,8"
-           AllowsTransparency="True"
-           StaysOpen="False"
-           IsOpen="{Binding IsEditorOpen, Mode=OneWay}">
-      <Border Background="#FF202020"
-              BorderBrush="#33FFFFFF"
-              BorderThickness="1"
-              CornerRadius="6"
-              Padding="16"
-              MinWidth="440"
-              MaxWidth="640"
-              MaxHeight="620">
-        <StackPanel>
-          <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-            <TextBlock Text="{Binding CellEditor.Title}"
-                       FontWeight="SemiBold" FontSize="16" />
-            <TextBlock Text="{Binding CellEditor.SetStatus}"
-                       Margin="12,0,0,0"
-                       VerticalAlignment="Center"
-                       FontSize="12" Opacity="0.7" />
-            <Button Content="Import patch"
-                    Margin="12,0,0,0"
-                    Command="{Binding CellEditor.ImportPatchCommand}" />
-          </StackPanel>
-
-          <Grid ColumnDefinitions="280,*">
-            <!-- ARMOR 1 - read-only target inventory (Sprint 6.9 T2) -->
-            <StackPanel Grid.Column="0" Margin="0,0,16,0">
-              <TextBlock Text="ARMOR 1" FontWeight="SemiBold" FontSize="12" Opacity="0.8" />
-              <TextBlock Text="Set to replace" FontSize="11" Opacity="0.6" Margin="0,2,0,10" />
-
-              <ItemsControl ItemsSource="{Binding CellEditor.Rows}" Grid.IsSharedSizeScope="True">
-                <ItemsControl.ItemsPanel>
-                  <ItemsPanelTemplate>
-                    <StackPanel />
-                  </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate DataType="{x:Type vm:PieceInventoryRowViewModel}">
-                    <Border BorderBrush="#22FFFFFF" BorderThickness="0,0,0,1" Padding="0,6">
-                      <StackPanel>
-                        <StackPanel Orientation="Horizontal">
-                          <TextBlock Text="{Binding EditorId}" FontWeight="SemiBold" FontSize="12" />
-                          <TextBlock Text="{Binding Status}"
-                                     Margin="8,0,0,0"
-                                     VerticalAlignment="Center"
-                                     FontSize="11" Opacity="0.7" />
-                        </StackPanel>
-                        <TextBlock Text="{Binding Slot}" FontSize="11" Opacity="0.7" />
-                        <TextBlock Text="{Binding TargetMesh}" FontSize="11" Opacity="0.6" TextTrimming="CharacterEllipsis" />
-                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                          <TextBlock Text="{Binding DonorBodyMarkerText, StringFormat='Body: {0}'}" FontSize="11" Opacity="0.7" />
-                          <TextBlock Text="BodySlide" FontSize="11" Opacity="0.7" Margin="8,0,0,0"
-                                     Visibility="{Binding HasBodySlide, Converter={StaticResource BoolToVis}}" />
-                          <TextBlock Text="Physics" FontSize="11" Opacity="0.7" Margin="8,0,0,0"
-                                     Visibility="{Binding HasPhysics, Converter={StaticResource BoolToVis}}" />
-                        </StackPanel>
-                      </StackPanel>
-                    </Border>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </StackPanel>
-
-            <!-- ARMOR 2 - the replacement mod (Sprint 6.9 T2) -->
-            <StackPanel Grid.Column="1" Margin="16,0,0,0">
-              <TextBlock Text="ARMOR 2" FontWeight="SemiBold" FontSize="12" Opacity="0.8" />
-              <TextBlock Text="Replacement mod" FontSize="11" Opacity="0.6" Margin="0,2,0,10" />
-
-              <TextBlock Text="{Binding CellEditor.CurrentDonorText}"
-                         FontWeight="SemiBold" FontSize="13" />
-              <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                <ComboBox ItemsSource="{Binding CellEditor.AvailableDonors}"
-                          SelectedItem="{Binding CellEditor.SelectedDonor}"
-                          DisplayMemberPath="DisplayName"
-                          MinWidth="180" />
-                <Button Content="{Binding CellEditor.LoadDonorLabel}"
-                        Margin="8,0,0,0"
-                        Command="{Binding CellEditor.LoadDonorCommand}" />
-              </StackPanel>
-
-              <StackPanel Margin="0,18,0,0">
-                <TextBlock Text="{Binding CellEditor.BodyCheckText}"
-                           FontWeight="SemiBold" FontSize="12" />
-                <StackPanel Orientation="Horizontal" Margin="0,6,0,0"
-                            Visibility="{Binding CellEditor.ShowBodyPatchRow, Converter={StaticResource BoolToVis}}">
-                  <ComboBox ItemsSource="{Binding CellEditor.BodyPatches}"
-                            SelectedItem="{Binding CellEditor.SelectedBodyPatch}"
-                            DisplayMemberPath="DisplayName"
-                            MinWidth="180" />
-                  <Button Content="{Binding CellEditor.LoadBodyPatchLabel}"
-                          Margin="8,0,0,0"
-                          Command="{Binding CellEditor.LoadBodyPatchCommand}" />
-                </StackPanel>
-                <Button Content="{Binding CellEditor.ClearBodyPatchLabel}"
-                        Margin="0,6,0,0"
-                        HorizontalAlignment="Left"
-                        Visibility="{Binding CellEditor.ShowClearBodyPatch, Converter={StaticResource BoolToVis}}"
-                        Command="{Binding CellEditor.ClearBodyPatchCommand}" />
-
-                <TextBlock Text="{Binding CellEditor.PhysicsCheckText}"
-                           FontWeight="SemiBold" FontSize="12" Margin="0,14,0,0" />
-                <StackPanel Orientation="Horizontal" Margin="0,6,0,0"
-                            Visibility="{Binding CellEditor.ShowPhysicsPatchRow, Converter={StaticResource BoolToVis}}">
-                  <ComboBox ItemsSource="{Binding CellEditor.PhysicsPatches}"
-                            SelectedItem="{Binding CellEditor.SelectedPhysicsPatch}"
-                            DisplayMemberPath="DisplayName"
-                            MinWidth="180" />
-                  <Button Content="Load HDT-SMP patch"
-                          Margin="8,0,0,0"
-                          Command="{Binding CellEditor.LoadPhysicsPatchCommand}" />
-                </StackPanel>
-                <Button Content="Clear HDT-SMP patch"
-                        Margin="0,6,0,0"
-                        HorizontalAlignment="Left"
-                        Visibility="{Binding CellEditor.ShowClearPhysicsPatch, Converter={StaticResource BoolToVis}}"
-                        Command="{Binding CellEditor.ClearPhysicsPatchCommand}" />
-              </StackPanel>
-            </StackPanel>
-          </Grid>
-        </StackPanel>
-      </Border>
-    </Popup>
   </Grid>
 </Page>

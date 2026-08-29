@@ -8,39 +8,11 @@
                  Title="Ultimate Wardrobe - Open Project"
                  Height="520" Width="640"
                  MinHeight="420" MinWidth="520"
-                 WindowStartupLocation="CenterScreen">
+                 WindowStartupLocation="CenterScreen"
+                 ExtendsContentIntoTitleBar="False">
 
   <ui:FluentWindow.Resources>
     <BooleanToVisibilityConverter x:Key="BoolToVis" />
-    <Style x:Key="CornerCloseButton" TargetType="Button">
-      <Setter Property="Width" Value="36" />
-      <Setter Property="Height" Value="36" />
-      <Setter Property="Margin" Value="0,6,6,0" />
-      <Setter Property="Padding" Value="0" />
-      <Setter Property="Background" Value="Transparent" />
-      <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="Foreground" Value="#FFFFFFFF" />
-      <Setter Property="HorizontalAlignment" Value="Right" />
-      <Setter Property="VerticalAlignment" Value="Top" />
-      <Setter Property="Cursor" Value="Hand" />
-      <Setter Property="Template">
-        <Setter.Value>
-          <ControlTemplate TargetType="Button">
-            <Border Background="{TemplateBinding Background}" CornerRadius="4">
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-            </Border>
-          </ControlTemplate>
-        </Setter.Value>
-      </Setter>
-      <Style.Triggers>
-        <Trigger Property="IsMouseOver" Value="True">
-          <Setter Property="Background" Value="#33FFFFFF" />
-        </Trigger>
-        <Trigger Property="IsPressed" Value="True">
-          <Setter Property="Background" Value="#4DFFFFFF" />
-        </Trigger>
-      </Style.Triggers>
-    </Style>
   </ui:FluentWindow.Resources>
 
   <Grid>
@@ -99,10 +71,5 @@
                        Visibility="{Binding IsBusy, Mode=OneWay, Converter={StaticResource BoolToVis}}" />
     </Grid>
 
-    <Button Style="{StaticResource CornerCloseButton}"
-            Click="OnCloseClicked"
-            ToolTip="Close">
-      <ui:SymbolIcon Symbol="Dismiss24" Foreground="#FFFFFFFF" Width="18" Height="18" />
-    </Button>
   </Grid>
 </ui:FluentWindow>

@@ -1,5 +1,6 @@
 using UltimateWardrobe.Core.Domain;
 using UltimateWardrobe.Core.Enums;
+using UltimateWardrobe.Mapping;
 
 namespace UltimateWardrobe.App.ViewModels;
 
@@ -47,6 +48,8 @@ public static class DonorPresentation
     public static DonorRowViewModel ToRow(DonorAsset asset)
     {
         ArgumentNullException.ThrowIfNull(asset);
+        var hasThreeBA = DonorCompatibility.DonorContainsBody(asset, BodyType.ThreeBA);
+        var hasHimbo = DonorCompatibility.DonorContainsBody(asset, BodyType.HIMBO);
         return new DonorRowViewModel(
             asset,
             asset.OriginalFileName,
@@ -54,14 +57,16 @@ public static class DonorPresentation
             asset.ProvidedSets.Count,
             asset.DetectedBodySlideFiles.Count > 0,
             asset.DetectedPhysicsFiles.Count > 0,
-            asset.ImportedAt.ToString("yyyy-MM-dd HH:mm"));
+            asset.ImportedAt.ToString("yyyy-MM-dd HH:mm"),
+            hasThreeBA,
+            hasHimbo);
     }
 }
 
 /// <summary>
-/// One row in the donor library table (Phase 6 Sprint 6.3): the living <see cref="DonorAsset"/>
+/// One row in the donor library table (Phase 6 Sprint 6.3, extended 3.5 with 3BA/HIMBO): the living <see cref="DonorAsset"/>
 /// reference (so the remove/reclassify/kind commands can act on it) plus the displayed fields -
-/// Kind badge, ProvidedSets count, BodySlide/physics indicators and import date.
+/// Kind badge, ProvidedSets count, BodySlide/physics indicators and per-body 3BA/HIMBO badges and import date.
 /// </summary>
 public sealed record DonorRowViewModel(
     DonorAsset Asset,
@@ -70,7 +75,9 @@ public sealed record DonorRowViewModel(
     int ProvidedSetsCount,
     bool HasBodySlide,
     bool HasPhysics,
-    string ImportDate)
+    string ImportDate,
+    bool HasThreeBA = false,
+    bool HasHimbo = false)
 {
     public Guid ImportId => Asset.ImportId;
 }

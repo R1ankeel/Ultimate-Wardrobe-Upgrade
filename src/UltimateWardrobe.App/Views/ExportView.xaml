@@ -21,7 +21,7 @@
       <Setter Property="CornerRadius" Value="4" />
       <Setter Property="Padding" Value="10,6" />
       <Setter Property="Margin" Value="0,0,10,0" />
-      <Setter Property="Background" Value="#11FFFFFF" />
+      <Setter Property="Background" Value="{DynamicResource ControlFillColorDefaultBrush}" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
   </Page.Resources>

@@ -83,13 +83,21 @@
                 <TextBlock Text="{Binding ImportDate}" />
               </StackPanel>
               <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                <Border Style="{StaticResource IndicatorBadge}" Background="#FF7BC67E"
+                        Visibility="{Binding HasThreeBA, Converter={StaticResource BoolToVis}}">
+                  <TextBlock Text="3BA" FontSize="11" />
+                </Border>
+                <Border Style="{StaticResource IndicatorBadge}" Background="#FF7BA7C6"
+                        Visibility="{Binding HasHimbo, Converter={StaticResource BoolToVis}}">
+                  <TextBlock Text="HIMBO" FontSize="11" />
+                </Border>
                 <Border Style="{StaticResource IndicatorBadge}" Background="#FF3D7A4A"
                         Visibility="{Binding HasBodySlide, Converter={StaticResource BoolToVis}}">
                   <TextBlock Text="BodySlide" FontSize="11" />
                 </Border>
                 <Border Style="{StaticResource IndicatorBadge}" Background="#FF3D5C7A"
                         Visibility="{Binding HasPhysics, Converter={StaticResource BoolToVis}}">
-                  <TextBlock Text="Physics" FontSize="11" />
+                  <TextBlock Text="HDT-SMP" FontSize="11" />
                 </Border>
               </StackPanel>
             </StackPanel>
