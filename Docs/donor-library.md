@@ -128,14 +128,14 @@ Pure static functions over mesh/texture stems and relative paths.
 - `PrimaryRank` - `_1`(0) > `_0`(1) > `_1st`(2) > plain base (3) > anything else (4) - picks the primary file of a group.
 - `PieceTypeFromStem` - matches the frozen `PieceTypeDetector.EquipmentWords` case-insensitively after stripping trailing gender/weight markers (`cuirass_f` -> `Cuirass`), or null -> `Other`. Lowercase real mesh stems are matched the same way as CamelCase ARMO EditorIDs.
 - `GenderFrom` - resolution order: explicit stem markers (`_f`/`_female`/`_m`/`-male` via `ExplicitFromEditorId`), then `female`/`male` path segments (via `ExplicitFromMeshPath`), then single-char `f`/`m` path segments (documented extension for chaotic real replacer layouts), else null -> Unisex.
-- `WeightFromPath` - a path segment CONTAINING `heavy`, then `light`, then `clothes` (substring semantics handles `heavyiron`, `lightleather`, `cuirass_clothes.nif`), else `WeightClass.Any`. Priority heavy > light > clothes.
+- `WeightFromPath` - a path segment CONTAINING `heavy`, then `light`, then `clothes` (substring semantics handles `heavyiron`, `lightleather`, `cuirass_clothes.nif`), else `WeightClass.Any`. Priority heavy > light > clothes. Since F1 this weight is display-only for donor `ProvidedSets` - the replacement flow in `DonorCompatibility` ignores `WeightClass` entirely (any donor gender match may back any target weight when the biped slot matches).
 
 ### MeshSetAssembler + texture linkage (2.2.3 / 2.2.4)
 
 - Meshes group via `KeyNormalizer.NormalizeMeshFolder` (folder-key grouping; same-named `cuirass.nif` under `f/` and `m/` become distinct pieces because the piece key is `directory | baseStem`).
 - One primary file per group by `PrimaryRank`, ties broken ordinal by mesh path; alternates (`_0`/`_1`/`_1st`) stay in the manifest only.
-- Derived: gender/weight from the stem + game-relative path; EditorId = baseStem (keeps gender markers), `FormId = 0`, Slot = piece word.
-- A `Variant` per distinct `(gender, weight)` ordered by enum; pieces ordered by slot.
+- Derived: gender/weight from the stem + game-relative path; EditorId = baseStem (keeps gender markers), `FormId = 0`, Slot = piece word (e.g. `Cuirass`, `Gauntlets`). Since F2 the App `SlotNormalizer` (`src/UltimateWardrobe.App/ViewModels/SlotNormalizer.cs:1`) maps these word slots to the same canonical id as Branch-1 frozen slots (`32 Body`, `33 Hands` ...) so a Branch-2 `Cuirass` matches a vanilla `32 Body` and a Branch-1 `GNDcuirass` alike.
+- A `Variant` per distinct `(gender, weight)` ordered by enum; pieces ordered by slot. Weight here is catalog display only - since F1 the App replacement flow ignores it; slot matching is via `SlotNormalizer` (F2) with strict per-slot hits and family fallback for `Hands`/`Forearms`, `Feet`/`Calves`, `Head`/`Hair`/`LongHair`/`Circlet`/`Ears` - a missing slot returns null and the editor warns per-piece while allowing partial assignment for the remaining slots. Body/physics patch need (F3) is per-gender via `SlotNormalizer`-independent `BodyMarkerFromPath` - a `himbo` mesh never counts for `3BA`.
 - Textures: indexed per set, each texture stem mapped through the piece-word table, deduped + ordinal, attached to the piece with the matching slot - the mirror of the branch-1 TXST correlation output.
 - Empty mesh index: early return, no sets, no crash - a texture-only replacer yields no ProvidedSets and (in the absence of BodySlide/physics flags) `Kind = Unknown`.
 

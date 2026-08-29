@@ -173,8 +173,8 @@ public sealed class ArmorSetDetailViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The compatible donor candidates of the library (the "load armor" picker). Excludes the directly
-    /// loaded donor so a Change always picks a different replacement.
+    /// The compatible donor candidates of the library (the "load armor" picker) - F1 weight-agnostic.
+    /// Excludes the directly loaded donor so a Change always picks a different replacement.
     /// </summary>
     public IReadOnlyList<DonorOption> AvailableDonors
     {
@@ -185,7 +185,7 @@ public sealed class ArmorSetDetailViewModel : ObservableObject
             var current = CurrentDonor;
             return _library.Assets
                 .Where(a => a.Kind == DonorAssetKind.FullReplacer
-                            && DonorCompatibility.IsCompatible(a, _variant.Gender, _variant.Weight)
+                            && DonorCompatibility.IsCompatible(a, _variant.Gender)
                             && a.ImportId != current?.ImportId)
                 .OrderBy(DonorCompatibility.DisplayName)
                 .Select(a => new DonorOption(a, DonorCompatibility.DisplayName(a)))
@@ -341,13 +341,38 @@ public sealed class ArmorSetDetailViewModel : ObservableObject
         if (!IsOpen || donor is null || _overhaul is null || _overhaul.Catalog is null) return;
         if (HasCurrentDonor && CurrentDonor!.ImportId == donor.ImportId) return;
 
+        if (!DonorCompatibility.IsCompatible(donor, _variant!.Gender))
+        {
+            throw new InvalidOperationException(
+                $"Donor {donor.OriginalFileName} provides no variant covering {_variant.Gender}.");
+        }
+
         var previousDonor = CurrentDonor;
+        var assigned = 0;
         foreach (var piece in _variant!.Pieces)
         {
-            var donorPiece = DonorCompatibility.FindDonorPiece(donor, _variant.Gender, _variant.Weight, piece.Slot)
-                ?? throw new InvalidOperationException(
-                    $"Donor {donor.OriginalFileName} provides no variant covering {_variant.Gender} {_variant.Weight}.");
+            var donorPiece = DonorCompatibility.FindDonorPiece(donor, _variant.Gender, piece.Slot);
+            if (donorPiece is null)
+            {
+                _logger.LogWarning(
+                    "Donor {Donor} provides no {Gender} piece for target slot {Slot} (target {TargetPiece}) - skipping that piece.",
+                    DonorCompatibility.DisplayName(donor),
+                    _variant.Gender,
+                    piece.Slot,
+                    piece.EditorId);
+                continue;
+            }
+
             _mapping.AssignDonor(_overhaul, _overhaul.Catalog, donor, piece, donorPiece);
+            assigned++;
+        }
+
+        if (assigned == 0)
+        {
+            _logger.LogWarning(
+                "Donor {Donor} provided no slot-compatible piece for variant {Variant} - no mappings were created.",
+                DonorCompatibility.DisplayName(donor),
+                _variant.Gender);
         }
 
         SelectedDonor = null;
@@ -408,12 +433,12 @@ public sealed class ArmorSetDetailViewModel : ObservableObject
         }
 
         if (asset.Kind != DonorAssetKind.FullReplacer
-            || !DonorCompatibility.IsCompatible(asset, _variant.Gender, _variant.Weight))
+            || !DonorCompatibility.IsCompatible(asset, _variant.Gender))
         {
             await _dialogs.AlertAsync(
                 "Donor not usable",
                 $"'{DonorCompatibility.DisplayName(asset)}' was classified as {DonorPresentation.KindText(asset.Kind)} and provides no "
-                + $"{_variant.Gender} {_variant.Weight} variant. It stays in the donor library - check it on the Donor Library screen.");
+                + $"{_variant.Gender} variant. It stays in the donor library - check it on the Donor Library screen.");
             return;
         }
 

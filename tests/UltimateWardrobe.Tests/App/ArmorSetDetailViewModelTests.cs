@@ -450,6 +450,38 @@ public class ArmorSetDetailViewModelTests
         }
     }
 
+    [Fact]
+    public void Clothing_one_piece_variant_mapped_by_Heavy_donor_body_is_Mapped()
+    {
+        // F6 - 1-piece Clothing variant (e.g. Belted Tunic, 32 Body) must be replaceable by a Heavy donor Body piece
+        var d = Fixtures.Create(ironFemalePieces: new[]
+        {
+            new Piece("ClothesBeltedTunic", 0x5001, "32 Body", "ClothesBeltedTunicArma", "meshes/clothes/beltedtunic.nif"),
+        });
+        var vm = d.Vm;
+        vm.Activate(vm.CellAt(0, 0, 0)!);
+        var editor = vm.CellEditor;
+
+        editor.Variant!.Pieces.Should().ContainSingle(p => p.EditorId == "ClothesBeltedTunic");
+        // Heavy donor must appear in picker even for Clothing target (weight-agnostic, gender-only)
+        editor.AvailableDonors.Should().Contain(o => o.Asset == d.DonorFemaleHeavy, "Heavy donor must be compatible with Clothing target (F1)");
+        editor.AvailableDonors.Should().Contain(o => o.Asset == d.DonorBodyOnly);
+
+        editor.LoadDonor(d.DonorFemaleHeavy);
+
+        d.Overhaul.Mappings.Should().ContainSingle();
+        editor.SetStatus.Should().Be(ArmorSetStatus.Mapped);
+        var progress = new MappingService(d.Library).GetOverhaulProgress(d.Overhaul.Mappings, d.Overhaul.Catalog!);
+        progress.Mapped.Should().Be(1);
+        progress.Done.Should().Be(0);
+        editor.HasRequiredBody.Should().BeTrue("Heavy donor carries 3ba token");
+        editor.HasPhysics.Should().BeTrue();
+        // Patch rows gender-correct: Female -> 3BA, not HIMBO
+        editor.RequiredBodyName.Should().Be("3BA");
+        editor.BodyCheckText.Should().Be("3BA: OK");
+        editor.PhysicsCheckText.Should().Be("HDT-SMP: OK");
+    }
+
     private sealed class Fixture
     {
         public required OverhaulViewModel Vm { get; init; }
@@ -479,8 +511,12 @@ public class ArmorSetDetailViewModelTests
             var donorFemaleHeavy = new DonorAsset(
                 Guid.Parse("aaaaaaaa-0000-0000-0000-000000000001"), "donor-f.7z", "C:/Src/df", DateTime.UtcNow, "hf",
                 DonorAssetKind.FullReplacer,
-                new[] { new DonorProvidedSet("dfset", "D1 Alpha", new[] { new Variant(Gender.Female, WeightClass.Heavy, new[] { new Piece("DFPiece", 0x11, "32 Body", "DFArma", "donor/df.nif") }) }) },
-                detectedBodySlideFiles: new[] { "body/df_slide.nif" },
+                new[] { new DonorProvidedSet("dfset", "D1 Alpha", new[] { new Variant(Gender.Female, WeightClass.Heavy, new[]
+                {
+                    new Piece("DFPiece", 0x11, "32 Body", "DFArma", "donor/3ba/df.nif"),
+                    new Piece("DFPieceHands", 0x12, "33 Hands", "DFArmaHands", "donor/3ba/df_hands.nif"),
+                }) }) },
+                detectedBodySlideFiles: new[] { "body/3ba/df_slide.nif" },
                 detectedPhysicsFiles: new[] { "physics/df_hdt.xml" });
 
             var donorMaleHeavy = new DonorAsset(
@@ -491,7 +527,11 @@ public class ArmorSetDetailViewModelTests
             var donorBodyOnly = new DonorAsset(
                 Guid.Parse("aaaaaaaa-0000-0000-0000-000000000003"), "donor-body.7z", "C:/Src/db", DateTime.UtcNow, "hb",
                 DonorAssetKind.FullReplacer,
-                new[] { new DonorProvidedSet("dbset", "D3 Body Only", new[] { new Variant(Gender.Female, WeightClass.Heavy, new[] { new Piece("DBPiece", 0x13, "32 Body", "DBArma", "donor/plain.nif") }) }) });
+                new[] { new DonorProvidedSet("dbset", "D3 Body Only", new[] { new Variant(Gender.Female, WeightClass.Heavy, new[]
+                {
+                    new Piece("DBPiece", 0x13, "32 Body", "DBArma", "donor/plain.nif"),
+                    new Piece("DBPieceHands", 0x14, "33 Hands", "DBArmaHands", "donor/plain_hands.nif"),
+                }) }) });
 
             var bodyPatch = new DonorAsset(
                 Guid.Parse("aaaaaaaa-0000-0000-0000-000000000004"), "patch-body.7z", "C:/Src/pb", DateTime.UtcNow, "hp",
