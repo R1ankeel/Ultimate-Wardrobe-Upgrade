@@ -5,7 +5,9 @@ using System.IO;
 using System.Windows;
 using UltimateWardrobe.App.Infrastructure;
 using UltimateWardrobe.App.Services;
+using UltimateWardrobe.App.Storage;
 using UltimateWardrobe.App.Views;
+using Wpf.Ui.Appearance;
 
 namespace UltimateWardrobe.App;
 
@@ -44,11 +46,20 @@ public partial class App : Application
         _host = builder.Build();
         _host.Start();
 
-        // Eagerly apply persisted theme before any window shows - WpfUiThemeService ctor syncs ApplicationThemeManager with stored Dark/Light.
+        // Eagerly apply persisted theme before any window shows - read stored Dark/Light and sync ApplicationThemeManager before picker renders.
+        // Do both direct Apply and via IThemeService to guarantee the resource dictionaries are swapped on the UI thread before any FluentWindow is created.
+        var store = _host.Services.GetRequiredService<RecentProjectsStore>();
+        var themeMode = store.GetThemeMode();
+        var theme = string.Equals(themeMode, RecentProjectsStore.LightTheme, StringComparison.OrdinalIgnoreCase)
+            ? ApplicationTheme.Light
+            : ApplicationTheme.Dark;
+        ApplicationThemeManager.Apply(theme);
         _host.Services.GetRequiredService<IThemeService>();
 
         var session = _host.Services.GetRequiredService<IProjectSession>();
         var picker = _host.Services.GetRequiredService<ProjectPickerWindow>();
+        // Ensure picker itself is themed - re-apply after creation in case FluentWindow template was realized before Apply.
+        ApplicationThemeManager.Apply(theme);
         picker.ShowDialog();
 
         if (session.IsOpen)
@@ -57,6 +68,9 @@ public partial class App : Application
             MainWindow = mainWindow;
             mainWindow.Closed += (_, _) => Shutdown();
             mainWindow.Show();
+            // Re-apply after MainWindow is shown so its NavigationView and hosted Pages pick up the correct TextFillColorPrimaryBrush/ApplicationBackgroundBrush.
+            // Fixes dark text on dark background at startup that only corrected after Light->Dark toggle.
+            ApplicationThemeManager.Apply(theme);
         }
         else
         {

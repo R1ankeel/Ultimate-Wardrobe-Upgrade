@@ -29,20 +29,13 @@
       <RowDefinition Height="*" />
     </Grid.RowDefinitions>
 
-    <!-- Header with title, status, Import patch and close "x" -->
+    <!-- Header with title, status and Import patch - OS title bar provides the single close button -->
     <Grid Grid.Row="0" Margin="0,0,0,12">
-      <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="*" />
-        <ColumnDefinition Width="Auto" />
-      </Grid.ColumnDefinitions>
-      <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+      <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
         <TextBlock Text="{Binding CellEditor.Title}" FontWeight="SemiBold" FontSize="16" />
         <TextBlock Text="{Binding CellEditor.SetStatus}" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="12" Opacity="0.7" />
         <Button Content="Import patch" Margin="12,0,0,0" Command="{Binding CellEditor.ImportPatchCommand}" />
       </StackPanel>
-      <Button Grid.Column="1" ToolTip="Close" Click="OnCloseClicked" Background="Transparent" BorderThickness="0" Padding="8" VerticalAlignment="Center">
-        <ui:SymbolIcon Symbol="Dismiss24" Width="16" Height="16" />
-      </Button>
     </Grid>
 
     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">

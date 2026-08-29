@@ -14,6 +14,36 @@
 
   <ui:FluentWindow.Resources>
     <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    <!-- Title bar is rendered by the OS (ExtendsContentIntoTitleBar="False"), but keep an in-content close overlay as fallback for WindowChrome edge cases where system buttons are not reachable -->
+    <Style x:Key="CornerCloseButton" TargetType="Button">
+      <Setter Property="Width" Value="36" />
+      <Setter Property="Height" Value="36" />
+      <Setter Property="Margin" Value="0,6,6,0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+      <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border Background="{TemplateBinding Background}" CornerRadius="4">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background" Value="{DynamicResource ControlFillColorTertiaryBrush}" />
+        </Trigger>
+        <Trigger Property="IsPressed" Value="True">
+          <Setter Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
+        </Trigger>
+      </Style.Triggers>
+    </Style>
   </ui:FluentWindow.Resources>
 
   <Grid>
@@ -102,5 +132,14 @@
     </Border>
 
     <ui:SnackbarPresenter x:Name="SnackbarPresenter" Grid.Row="0" />
+
+    <!-- In-content close fallback - ensures a close button even if OS chrome is hidden by FluentWindow WindowChrome -->
+    <Button Grid.Row="0"
+            Style="{StaticResource CornerCloseButton}"
+            Click="OnCloseClicked"
+            ToolTip="Close"
+            Panel.ZIndex="10">
+      <ui:SymbolIcon Symbol="Dismiss24" Width="18" Height="18" />
+    </Button>
   </Grid>
 </ui:FluentWindow>

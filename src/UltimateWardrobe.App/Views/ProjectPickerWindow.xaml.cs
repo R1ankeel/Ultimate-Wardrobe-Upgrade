@@ -28,4 +28,9 @@ public partial class ProjectPickerWindow : FluentWindow
     {
         Dispatcher.Invoke(() => Close());
     }
+
+    private void OnCloseClicked(object sender, RoutedEventArgs e)
+    {
+        Close();
+    }
 }

@@ -60,6 +60,11 @@ public partial class MainWindow : FluentWindow
         InitializeNavigation();
     }
 
+    private void OnCloseClicked(object sender, RoutedEventArgs e)
+    {
+        Close();
+    }
+
     /// <summary>
     /// Wires the WPF-UI 4.3.0 services to the shell's <see cref="NavigationView"/>: attaches the
     /// DI page provider (so navigation items resolve pages from the composition root) and binds the

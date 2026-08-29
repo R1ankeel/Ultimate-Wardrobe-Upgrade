@@ -41,11 +41,14 @@ public partial class OverhaulView : System.Windows.Controls.Page
 
     private void OnListPreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
-        if (e.Handled) return;
+        // Wheel over a nested Button (MatrixCellCard) is handled by the Button and never reaches the ListView's ScrollViewer.
+        // Tunnel PreviewMouseWheel at the ListView level and manually scroll the internal ScrollViewer, then mark handled.
         var sv = FindVisualChild<ScrollViewer>(MatrixListView);
         if (sv != null)
         {
-            sv.ScrollToVerticalOffset(sv.VerticalOffset - e.Delta / 3);
+            var newOffset = sv.VerticalOffset - e.Delta / 3.0;
+            newOffset = Math.Max(0, Math.Min(newOffset, Math.Max(0, sv.ExtentHeight - sv.ViewportHeight)));
+            sv.ScrollToVerticalOffset(newOffset);
             e.Handled = true;
         }
     }
