@@ -1,5 +1,6 @@
 using UltimateWardrobe.Core.Domain;
 using UltimateWardrobe.Core.Enums;
+using UltimateWardrobe.Mapping;
 
 namespace UltimateWardrobe.App.ViewModels;
 
@@ -66,6 +67,46 @@ public static class DonorCompatibility
     /// <summary>Display name for a donor option: first provided set's display name, else the archive name.</summary>
     public static string DisplayName(DonorAsset donor)
         => donor.ProvidedSets.Count > 0 ? donor.ProvidedSets[0].DisplayName : donor.OriginalFileName;
+
+    /// <summary>
+    /// The body type demanded by a replacement of <paramref name="gender"/> (Phase 6 Sprint 6.9
+    /// replacement editor): a female replacement demands 3BA, a male replacement demands HIMBO.
+    /// </summary>
+    public static BodyType RequiredBodyTypeFor(Gender gender) => gender == Gender.Male ? BodyType.HIMBO : BodyType.ThreeBA;
+
+    /// <summary>
+    /// Set-level body requirement check (Phase 6 Sprint 6.9): true when the donor "already contains"
+    /// the required body - it ships BodySlide conversions (the existing <c>DetectedBodySlideFiles</c>
+    /// flag) or any of its provided meshes carries the required body-type marker via
+    /// <see cref="MappingService.BodyMarkerFromPath"/> (3ba / himbo path tokens).
+    /// </summary>
+    public static bool DonorContainsBody(DonorAsset donor, BodyType requiredBody)
+    {
+        if (donor is null) return false;
+        if (donor.DetectedBodySlideFiles.Count > 0) return true;
+
+        foreach (var set in donor.ProvidedSets)
+        {
+            foreach (var variant in set.Variants)
+            {
+                foreach (var piece in variant.Pieces)
+                {
+                    if (MappingService.BodyMarkerFromPath(piece.MeshPath) == requiredBody)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Set-level physics requirement check (Phase 6 Sprint 6.9): true when the donor already contains
+    /// physics via the existing <c>DetectedPhysicsFiles</c> flag.
+    /// </summary>
+    public static bool DonorHasPhysics(DonorAsset donor) => donor is not null && donor.DetectedPhysicsFiles.Count > 0;
 
     private static bool VariantMatches(Variant variant, Gender gender, WeightClass weight)
         => (variant.Gender == gender || variant.Gender == Gender.Unisex)

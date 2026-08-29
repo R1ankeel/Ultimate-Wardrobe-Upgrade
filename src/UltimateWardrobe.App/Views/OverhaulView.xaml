@@ -201,8 +201,8 @@
               BorderThickness="1"
               CornerRadius="6"
               Padding="16"
-              MinWidth="380"
-              MaxWidth="560"
+              MinWidth="440"
+              MaxWidth="640"
               MaxHeight="620">
         <StackPanel>
           <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
@@ -217,94 +217,101 @@
                     Command="{Binding CellEditor.ImportPatchCommand}" />
           </StackPanel>
 
-          <ItemsControl ItemsSource="{Binding CellEditor.Rows}" Grid.IsSharedSizeScope="True">
-            <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate>
-                <StackPanel />
-              </ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-            <ItemsControl.ItemTemplate>
-              <DataTemplate DataType="{x:Type vm:PieceEditRowViewModel}">
-                <Border BorderBrush="#22FFFFFF" BorderThickness="0,0,0,1" Margin="0,6" Padding="0,6">
-                  <StackPanel>
-                    <StackPanel Orientation="Horizontal">
-                      <StackPanel Width="150">
-                        <TextBlock Text="{Binding EditorId}" FontWeight="SemiBold" FontSize="12" />
+          <Grid ColumnDefinitions="280,*">
+            <!-- ARMOR 1 - read-only target inventory (Sprint 6.9 T2) -->
+            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+              <TextBlock Text="ARMOR 1" FontWeight="SemiBold" FontSize="12" Opacity="0.8" />
+              <TextBlock Text="Set to replace" FontSize="11" Opacity="0.6" Margin="0,2,0,10" />
+
+              <ItemsControl ItemsSource="{Binding CellEditor.Rows}" Grid.IsSharedSizeScope="True">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="{x:Type vm:PieceInventoryRowViewModel}">
+                    <Border BorderBrush="#22FFFFFF" BorderThickness="0,0,0,1" Padding="0,6">
+                      <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                          <TextBlock Text="{Binding EditorId}" FontWeight="SemiBold" FontSize="12" />
+                          <TextBlock Text="{Binding Status}"
+                                     Margin="8,0,0,0"
+                                     VerticalAlignment="Center"
+                                     FontSize="11" Opacity="0.7" />
+                        </StackPanel>
                         <TextBlock Text="{Binding Slot}" FontSize="11" Opacity="0.7" />
                         <TextBlock Text="{Binding TargetMesh}" FontSize="11" Opacity="0.6" TextTrimming="CharacterEllipsis" />
-                      </StackPanel>
-                      <StackPanel Width="120" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding Status}" FontSize="11" />
-                        <TextBlock Text="{Binding DonorBodyMarkerText, StringFormat='Body: {0}'}" FontSize="11" Opacity="0.7" />
-                      </StackPanel>
-                      <StackPanel HorizontalAlignment="Right">
-                        <TextBlock Text="BodySlide" FontSize="10" Opacity="0.8"
-                                   Visibility="{Binding HasBodySlide, Converter={StaticResource BoolToVis}}" />
-                        <TextBlock Text="Physics" FontSize="10" Opacity="0.8"
-                                   Visibility="{Binding HasPhysics, Converter={StaticResource BoolToVis}}" />
-                      </StackPanel>
-                    </StackPanel>
-
-                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                      <ComboBox ItemsSource="{Binding Donors}"
-                                SelectedItem="{Binding SelectedDonor}"
-                                DisplayMemberPath="DisplayName"
-                                MinWidth="200" />
-                      <Button Content="Assign"
-                              Margin="8,0,0,0"
-                              Command="{Binding DataContext.CellEditor.AssignDonorCommand, RelativeSource={RelativeSource AncestorType=Page}}"
-                              CommandParameter="{Binding}" />
-                      <Button Content="Unassign"
-                              Margin="8,0,0,0"
-                              Command="{Binding DataContext.CellEditor.UnassignCommand, RelativeSource={RelativeSource AncestorType=Page}}"
-                              CommandParameter="{Binding}" />
-                    </StackPanel>
-
-                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0"
-                                Visibility="{Binding ShowPatchPanel, Converter={StaticResource BoolToVis}}">
-                      <StackPanel Margin="0,0,12,0">
-                        <TextBlock Text="Body conversion patch" FontSize="11" Opacity="0.7" />
-                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                          <ComboBox ItemsSource="{Binding BodyPatches}"
-                                    SelectedItem="{Binding SelectedBodyPatch}"
-                                    DisplayMemberPath="DisplayName"
-                                    MinWidth="180" />
-                          <Button Content="Attach" Margin="6,0,0,0"
-                                  Command="{Binding DataContext.CellEditor.AttachBodyPatchCommand, RelativeSource={RelativeSource AncestorType=Page}}"
-                                  CommandParameter="{Binding}" />
-                          <Button Content="Detach" Margin="6,0,0,0"
-                                  Command="{Binding DataContext.CellEditor.DetachBodyPatchCommand, RelativeSource={RelativeSource AncestorType=Page}}"
-                                  CommandParameter="{Binding}" />
+                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                          <TextBlock Text="{Binding DonorBodyMarkerText, StringFormat='Body: {0}'}" FontSize="11" Opacity="0.7" />
+                          <TextBlock Text="BodySlide" FontSize="11" Opacity="0.7" Margin="8,0,0,0"
+                                     Visibility="{Binding HasBodySlide, Converter={StaticResource BoolToVis}}" />
+                          <TextBlock Text="Physics" FontSize="11" Opacity="0.7" Margin="8,0,0,0"
+                                     Visibility="{Binding HasPhysics, Converter={StaticResource BoolToVis}}" />
                         </StackPanel>
                       </StackPanel>
-                      <StackPanel>
-                        <TextBlock Text="Physics patch" FontSize="11" Opacity="0.7" />
-                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                          <ComboBox ItemsSource="{Binding PhysicsPatches}"
-                                    SelectedItem="{Binding SelectedPhysicsPatch}"
-                                    DisplayMemberPath="DisplayName"
-                                    MinWidth="180" />
-                          <Button Content="Attach" Margin="6,0,0,0"
-                                  Command="{Binding DataContext.CellEditor.AttachPhysicsPatchCommand, RelativeSource={RelativeSource AncestorType=Page}}"
-                                  CommandParameter="{Binding}" />
-                          <Button Content="Detach" Margin="6,0,0,0"
-                                  Command="{Binding DataContext.CellEditor.DetachPhysicsPatchCommand, RelativeSource={RelativeSource AncestorType=Page}}"
-                                  CommandParameter="{Binding}" />
-                        </StackPanel>
-                      </StackPanel>
-                    </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
 
-                    <DockPanel Margin="0,8,0,0">
-                      <Button DockPanel.Dock="Right" Content="Save notes" Margin="8,0,0,0"
-                              Command="{Binding DataContext.CellEditor.SetNotesCommand, RelativeSource={RelativeSource AncestorType=Page}}"
-                              CommandParameter="{Binding}" />
-                      <TextBox Text="{Binding Notes, UpdateSourceTrigger=PropertyChanged}" MinHeight="20" />
-                    </DockPanel>
-                  </StackPanel>
-                </Border>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
+            <!-- ARMOR 2 - the replacement mod (Sprint 6.9 T2) -->
+            <StackPanel Grid.Column="1" Margin="16,0,0,0">
+              <TextBlock Text="ARMOR 2" FontWeight="SemiBold" FontSize="12" Opacity="0.8" />
+              <TextBlock Text="Replacement mod" FontSize="11" Opacity="0.6" Margin="0,2,0,10" />
+
+              <TextBlock Text="{Binding CellEditor.CurrentDonorText}"
+                         FontWeight="SemiBold" FontSize="13" />
+              <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                <ComboBox ItemsSource="{Binding CellEditor.AvailableDonors}"
+                          SelectedItem="{Binding CellEditor.SelectedDonor}"
+                          DisplayMemberPath="DisplayName"
+                          MinWidth="180" />
+                <Button Content="{Binding CellEditor.LoadDonorLabel}"
+                        Margin="8,0,0,0"
+                        Command="{Binding CellEditor.LoadDonorCommand}" />
+              </StackPanel>
+
+              <StackPanel Margin="0,18,0,0">
+                <TextBlock Text="{Binding CellEditor.BodyCheckText}"
+                           FontWeight="SemiBold" FontSize="12" />
+                <StackPanel Orientation="Horizontal" Margin="0,6,0,0"
+                            Visibility="{Binding CellEditor.ShowBodyPatchRow, Converter={StaticResource BoolToVis}}">
+                  <ComboBox ItemsSource="{Binding CellEditor.BodyPatches}"
+                            SelectedItem="{Binding CellEditor.SelectedBodyPatch}"
+                            DisplayMemberPath="DisplayName"
+                            MinWidth="180" />
+                  <Button Content="{Binding CellEditor.LoadBodyPatchLabel}"
+                          Margin="8,0,0,0"
+                          Command="{Binding CellEditor.LoadBodyPatchCommand}" />
+                </StackPanel>
+                <Button Content="{Binding CellEditor.ClearBodyPatchLabel}"
+                        Margin="0,6,0,0"
+                        HorizontalAlignment="Left"
+                        Visibility="{Binding CellEditor.ShowClearBodyPatch, Converter={StaticResource BoolToVis}}"
+                        Command="{Binding CellEditor.ClearBodyPatchCommand}" />
+
+                <TextBlock Text="{Binding CellEditor.PhysicsCheckText}"
+                           FontWeight="SemiBold" FontSize="12" Margin="0,14,0,0" />
+                <StackPanel Orientation="Horizontal" Margin="0,6,0,0"
+                            Visibility="{Binding CellEditor.ShowPhysicsPatchRow, Converter={StaticResource BoolToVis}}">
+                  <ComboBox ItemsSource="{Binding CellEditor.PhysicsPatches}"
+                            SelectedItem="{Binding CellEditor.SelectedPhysicsPatch}"
+                            DisplayMemberPath="DisplayName"
+                            MinWidth="180" />
+                  <Button Content="Load HDT-SMP patch"
+                          Margin="8,0,0,0"
+                          Command="{Binding CellEditor.LoadPhysicsPatchCommand}" />
+                </StackPanel>
+                <Button Content="Clear HDT-SMP patch"
+                        Margin="0,6,0,0"
+                        HorizontalAlignment="Left"
+                        Visibility="{Binding CellEditor.ShowClearPhysicsPatch, Converter={StaticResource BoolToVis}}"
+                        Command="{Binding CellEditor.ClearPhysicsPatchCommand}" />
+              </StackPanel>
+            </StackPanel>
+          </Grid>
         </StackPanel>
       </Border>
     </Popup>

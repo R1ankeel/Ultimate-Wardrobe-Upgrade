@@ -307,7 +307,7 @@ public sealed class OverhaulViewModel : ObservableObject
         }
 
         _logger.LogInformation("Opening popover editor for '{Set}' {Gender} {Weight}.", cell.Set.DisplayName, cell.SectionGender, cell.Weight);
-        CellEditor.Open(cell.Set, variant, overhaul, _session.Project!.Library);
+        CellEditor.Open(cell.Set, variant, overhaul, _session.Project!.Library, _session.Project);
         ActiveCell = cell;
         IsEditorOpen = true;
     }

@@ -11,13 +11,15 @@ namespace UltimateWardrobe.Tests.App;
 using DonorLibraryModel = UltimateWardrobe.Core.Domain.DonorLibrary;
 
 /// <summary>
-/// Sprint 6.5 - Anchored single-cell mapping editor (<see cref="ArmorSetDetailViewModel"/> rescoped +
-/// the popover open/close state machine on <see cref="OverhaulViewModel"/>), headless:
-/// popover open/close with the correct variant/mapping payload and autosave flush on close,
-/// the Phase 3 mapping command sequence determinism, the donor compatibility filter predicate,
-/// the needs-patch row highlight under a strict patch policy, autosave invoking
-/// <see cref="IProjectStore.SaveAsync"/> on every edit, per-op status refresh, and the matrix cell
-/// card recompute observed by the host after each edit.
+/// Sprint 6.9 T2 - SET-level replacement editor (<see cref="ArmorSetDetailViewModel"/> rescoped), headless:
+/// the LArmor/Load-Armor empty state, the ARMOR 2 body/physics checkmarks vs the "Load .. patch" rows
+/// driven by the REAL donor detection flags, the replacement-gender body requirement (female -> 3BA,
+/// male -> HIMBO), the donor-library accounting on Change (a replaced donor is unloaded once nothing
+/// references it, and stays while another set still does), the set-level donor/patch fan-out to every
+/// variant piece with <see cref="MappingService.GetArmorSetStatus"/> /
+/// <see cref="MappingService.GetOverhaulProgress"/> correct, autosave flushing on every edit via
+/// <see cref="IProjectStore.SaveAsync"/>, and the matrix cell card recompute observed by the host after
+/// each edit.
 /// </summary>
 [Trait("Category", "App")]
 public class ArmorSetDetailViewModelTests
@@ -36,7 +38,7 @@ public class ArmorSetDetailViewModelTests
     }
 
     [Fact]
-    public async Task Popover_open_payload_binds_the_cell_variant_and_close_resets()
+    public async Task Open_close_binds_the_variant_payload_and_resets()
     {
         var d = Fixtures.Create();
         var vm = d.Vm;
@@ -75,60 +77,200 @@ public class ArmorSetDetailViewModelTests
     }
 
     [Fact]
-    public void Assigning_a_donor_flows_through_the_phase3_command_sequence_to_mapped()
+    public void Load_armor_empty_state_shows_the_picker_and_no_checks()
     {
         var d = Fixtures.Create();
         var vm = d.Vm;
         vm.Activate(vm.CellAt(0, 0, 0)!);
 
-        var row = vm.CellEditor.Rows.Single();
-        row.Status.Should().Be(MappingStatus.Pending);
-        row.SelectedDonor = row.Donors.Single(o => o.Asset == d.DonorFemaleHeavy);
+        var editor = vm.CellEditor;
+        editor.IsOpen.Should().BeTrue();
+        editor.HasCurrentDonor.Should().BeFalse();
+        editor.CurrentDonorText.Should().Be("Nothing loaded yet");
+        editor.LoadDonorLabel.Should().Be("Load Armor");
+        editor.RequiredBodyName.Should().Be("3BA");
+        editor.BodyCheckText.Should().BeEmpty();
+        editor.PhysicsCheckText.Should().BeEmpty();
+        editor.ShowBodyPatchRow.Should().BeFalse();
+        editor.ShowPhysicsPatchRow.Should().BeFalse();
 
-        vm.CellEditor.AssignDonor(row);
+        editor.Rows.Should().ContainSingle(r => r.EditorId == "IronCuirassF");
+        editor.Rows.Single().Status.Should().Be(MappingStatus.Pending);
+        editor.AvailableDonors.Should().Contain(o => o.Asset == d.DonorFemaleHeavy);
+        editor.AvailableDonors.Should().NotContain(o => o.Asset.Kind != DonorAssetKind.FullReplacer);
+    }
+
+    [Fact]
+    public void Donor_with_flags_shows_checkmarks_and_no_patch_rows()
+    {
+        var d = Fixtures.Create();
+        var vm = d.Vm;
+        vm.Activate(vm.CellAt(0, 0, 0)!);
+        var editor = vm.CellEditor;
+
+        editor.LoadDonor(d.DonorFemaleHeavy);
 
         d.Overhaul.Mappings.Should().ContainSingle();
+        editor.HasCurrentDonor.Should().BeTrue();
+        editor.CurrentDonorName.Should().Be("D1 Alpha");
+        editor.CurrentDonorText.Should().Be("Armor: D1 Alpha");
+        editor.LoadDonorLabel.Should().Be("Change");
+        editor.HasRequiredBody.Should().BeTrue();
+        editor.HasPhysics.Should().BeTrue();
+        editor.BodyCheckText.Should().Be("3BA: OK");
+        editor.PhysicsCheckText.Should().Be("HDT-SMP: OK");
+        editor.ShowBodyPatchRow.Should().BeFalse();
+        editor.ShowPhysicsPatchRow.Should().BeFalse();
+
+        editor.Rows.Single().Status.Should().Be(MappingStatus.Mapped);
+        editor.Rows.Single().HasBodySlide.Should().BeTrue();
+        editor.Rows.Single().HasPhysics.Should().BeTrue();
+        editor.SetStatus.Should().Be(ArmorSetStatus.Mapped);
         var cell = vm.CellAt(0, 0, 0)!;
         cell.IsBlank.Should().BeFalse();
         cell.Lines.Select(l => l.Text).Should().Contain("D1 Alpha", "grid card recompute observes the edit");
-        vm.CellEditor.Rows.Single().Status.Should().Be(MappingStatus.Mapped);
     }
 
     [Fact]
-    public void Needs_patch_row_highlights_and_offers_the_patch_panel_under_a_strict_policy()
+    public void Donor_without_flags_offers_the_body_and_physics_patch_rows()
     {
-        var d = Fixtures.Create(policy: PatchPolicy.RequireBodyConversion);
+        var d = Fixtures.Create();
         var vm = d.Vm;
         vm.Activate(vm.CellAt(0, 0, 0)!);
+        var editor = vm.CellEditor;
 
-        var row = vm.CellEditor.Rows.Single();
-        row.SelectedDonor = row.Donors.Single(o => o.Asset == d.DonorFemaleHeavyBodyOnly);
-        vm.CellEditor.AssignDonor(row);
+        editor.LoadDonor(d.DonorBodyOnly);
 
-        var refreshed = vm.CellEditor.Rows.Single();
-        refreshed.Status.Should().Be(MappingStatus.NeedsPatch);
-        refreshed.IsNeedsPatch.Should().BeTrue();
-        refreshed.ShowPatchPanel.Should().BeTrue();
-        refreshed.BodyPatches.Should().ContainSingle(o => o.Asset == d.BodyPatch);
+        editor.HasCurrentDonor.Should().BeTrue();
+        editor.HasRequiredBody.Should().BeFalse();
+        editor.HasPhysics.Should().BeFalse();
+        editor.BodyCheckText.Should().Be("3BA: patch required");
+        editor.PhysicsCheckText.Should().Be("HDT-SMP: patch required");
+        editor.ShowBodyPatchRow.Should().BeTrue();
+        editor.ShowPhysicsPatchRow.Should().BeTrue();
+        editor.BodyPatches.Should().ContainSingle(o => o.Asset == d.BodyPatch);
+        editor.PhysicsPatches.Should().ContainSingle(o => o.Asset == d.PhysicsPatch);
     }
 
     [Fact]
-    public void Attaching_the_body_patch_resolves_the_needs_patch()
+    public void Female_replacement_requires_3ba_and_male_requires_himbo()
     {
-        var d = Fixtures.Create(policy: PatchPolicy.RequireBodyConversion);
+        var d = Fixtures.Create(includeMaleSet: true);
+        var vm = d.Vm;
+
+        vm.Activate(vm.CellAt(0, 0, 0)!); // Iron female
+        vm.CellEditor.RequiredBodyName.Should().Be("3BA");
+        vm.CellEditor.AvailableDonors.Should().Contain(o => o.Asset == d.DonorFemaleHeavy);
+        vm.CellEditor.AvailableDonors.Should().NotContain(o => o.Asset == d.DonorMaleHeavy);
+
+        vm.Activate(vm.CellAt(1, 0, 0)!); // Steel male
+        var maleEditor = vm.CellEditor;
+        maleEditor.Set!.Id.Should().Be("SteelArmor");
+        maleEditor.RequiredBodyName.Should().Be("HIMBO");
+        maleEditor.AvailableDonors.Should().Contain(o => o.Asset == d.DonorMaleHeavy);
+        maleEditor.AvailableDonors.Should().NotContain(o => o.Asset == d.DonorFemaleHeavy);
+
+        maleEditor.LoadDonor(d.DonorMaleHeavy);
+        maleEditor.HasRequiredBody.Should().BeTrue("the male donor's mesh carries the himbo marker");
+        maleEditor.BodyCheckText.Should().Be("HIMBO: OK");
+        maleEditor.HasPhysics.Should().BeFalse();
+        maleEditor.ShowPhysicsPatchRow.Should().BeTrue();
+        maleEditor.Rows.Single().DonorBodyMarkerText.Should().Be(BodyType.HIMBO.ToString());
+    }
+
+    [Fact]
+    public void Change_donor_unloads_the_old_donor_when_nothing_else_references_it()
+    {
+        var d = Fixtures.Create();
         var vm = d.Vm;
         vm.Activate(vm.CellAt(0, 0, 0)!);
+        var editor = vm.CellEditor;
 
-        var row = vm.CellEditor.Rows.Single();
-        row.SelectedDonor = row.Donors.Single(o => o.Asset == d.DonorFemaleHeavyBodyOnly);
-        vm.CellEditor.AssignDonor(row);
-        vm.CellEditor.Rows.Single().Status.Should().Be(MappingStatus.NeedsPatch);
+        editor.LoadDonor(d.DonorFemaleHeavy);
+        d.Library.Assets.Should().Contain(d.DonorFemaleHeavy);
 
-        var needsPatch = vm.CellEditor.Rows.Single();
-        needsPatch.SelectedBodyPatch = needsPatch.BodyPatches.Single(o => o.Asset == d.BodyPatch);
-        vm.CellEditor.AttachBodyPatch(needsPatch);
+        editor.LoadDonor(d.DonorBodyOnly);
 
-        vm.CellEditor.Rows.Single().Status.Should().Be(MappingStatus.Mapped);
+        d.Library.Assets.Should().NotContain(d.DonorFemaleHeavy, "the replaced donor is unloaded once nothing references it");
+        d.Library.Assets.Should().Contain(d.DonorBodyOnly);
+        var mapping = d.Overhaul.Mappings.Should().ContainSingle().Subject;
+        mapping.DonorAssetId.Should().Be(d.DonorBodyOnly.ImportId);
+        mapping.BodyConversionPatchAssetId.Should().BeNull();
+        editor.LoadDonorLabel.Should().Be("Change");
+        vm.CellAt(0, 0, 0)!.Lines.Select(l => l.Text).Should().Contain("D3 Body Only");
+    }
+
+    [Fact]
+    public void Change_donor_keeps_the_donor_while_another_set_still_references_it()
+    {
+        var d = Fixtures.Create();
+        var vm = d.Vm;
+        vm.Activate(vm.CellAt(0, 0, 0)!);
+        var editor = vm.CellEditor;
+
+        editor.LoadDonor(d.DonorFemaleHeavy);
+
+        // Another set's mapping still references the donor.
+        d.Overhaul.Mappings.Add(new PieceMapping(
+            Guid.NewGuid(), d.Overhaul.Id, "SteelArmor", "SteelCuirassM", Gender.Male,
+            d.DonorFemaleHeavy.ImportId, "DFPiece", "donor/df.nif", status: MappingStatus.Mapped));
+
+        editor.LoadDonor(d.DonorBodyOnly);
+
+        d.Library.Assets.Should().Contain(d.DonorFemaleHeavy, "a donor a referenced set still uses stays in the library");
+        d.Overhaul.Mappings.Should().Contain(m => m.DonorAssetId == d.DonorBodyOnly.ImportId);
+    }
+
+    [Fact]
+    public void Set_level_assign_fans_out_to_every_piece_with_correct_status_and_progress()
+    {
+        var d = Fixtures.Create(ironFemalePieces: new[]
+        {
+            new Piece("IronCuirassF", 0x21, "32 Body", "IronCuirassFArma", "armor/IronCuirassF.nif"),
+            new Piece("IronGauntletsF", 0x22, "34 Gauntlets", "IronGauntletsFArma", "armor/IronGauntletsF.nif"),
+        });
+        var vm = d.Vm;
+        vm.Activate(vm.CellAt(0, 0, 0)!);
+        var editor = vm.CellEditor;
+
+        editor.LoadDonor(d.DonorFemaleHeavy);
+
+        d.Overhaul.Mappings.Should().HaveCount(2);
+        d.Overhaul.Mappings.Should().OnlyContain(m => m.DonorAssetId == d.DonorFemaleHeavy.ImportId);
+        editor.Rows.Should().HaveCount(2);
+        editor.Rows.Should().OnlyContain(r => r.IsAssigned);
+
+        editor.SetStatus.Should().Be(ArmorSetStatus.Mapped);
+        var progress = new MappingService(d.Library).GetOverhaulProgress(d.Overhaul.Mappings, d.Overhaul.Catalog!);
+        progress.TotalSets.Should().Be(1);
+        progress.Mapped.Should().Be(1);
+        progress.Done.Should().Be(0);
+    }
+
+    [Fact]
+    public void Attaching_the_body_patch_fans_out_and_resolves_needs_patch_under_a_strict_policy()
+    {
+        var d = Fixtures.Create(policy: PatchPolicy.RequireBodyConversion, ironFemalePieces: new[]
+        {
+            new Piece("IronCuirassF", 0x21, "32 Body", "IronCuirassFArma", "armor/IronCuirassF.nif"),
+            new Piece("IronGauntletsF", 0x22, "34 Gauntlets", "IronGauntletsFArma", "armor/IronGauntletsF.nif"),
+        });
+        var vm = d.Vm;
+        vm.Activate(vm.CellAt(0, 0, 0)!);
+        var editor = vm.CellEditor;
+
+        editor.LoadDonor(d.DonorBodyOnly);
+        editor.Rows.Should().OnlyContain(r => r.Status == MappingStatus.NeedsPatch);
+        editor.ShowBodyPatchRow.Should().BeTrue();
+
+        editor.LoadBodyPatch(d.BodyPatch);
+
+        d.Overhaul.Mappings.Should().OnlyContain(m => m.BodyConversionPatchAssetId == d.BodyPatch.ImportId);
+        editor.HasAttachedBodyPatch.Should().BeTrue();
+        editor.ShowBodyPatchRow.Should().BeFalse("a body patch is already attached");
+        editor.ShowClearBodyPatch.Should().BeTrue();
+        editor.Rows.Should().OnlyContain(r => r.Status == MappingStatus.Mapped);
+        editor.SetStatus.Should().Be(ArmorSetStatus.Mapped);
     }
 
     [Fact]
@@ -139,9 +281,7 @@ public class ArmorSetDetailViewModelTests
         var savesBefore = d.Store.SaveCount;
         vm.Activate(vm.CellAt(0, 0, 0)!);
 
-        var row = vm.CellEditor.Rows.Single();
-        row.SelectedDonor = row.Donors.Single(o => o.Asset == d.DonorFemaleHeavy);
-        vm.CellEditor.AssignDonor(row);
+        vm.CellEditor.LoadDonor(d.DonorFemaleHeavy);
 
         d.Store.SaveCount.Should().BeGreaterThan(savesBefore, "an edit flushes SaveAsync via the session store");
 
@@ -160,9 +300,7 @@ public class ArmorSetDetailViewModelTests
         vm.Activate(vm.CellAt(0, 0, 0)!);
         vm.CellEditor.SetStatus.Should().Be(ArmorSetStatus.NotStarted);
 
-        var row = vm.CellEditor.Rows.Single();
-        row.SelectedDonor = row.Donors.Single(o => o.Asset == d.DonorFemaleHeavy);
-        vm.CellEditor.AssignDonor(row);
+        vm.CellEditor.LoadDonor(d.DonorFemaleHeavy);
 
         vm.CellEditor.SetStatus.Should().Be(ArmorSetStatus.Mapped);
         vm.CellAt(0, 0, 0)!.Status.Should().Be(ArmorSetStatus.Mapped);
@@ -177,24 +315,42 @@ public class ArmorSetDetailViewModelTests
         d.Navigation.Navigated.Should().Contain(typeof(UltimateWardrobe.App.Views.DonorLibraryView));
     }
 
+    private sealed class Fixture
+    {
+        public required OverhaulViewModel Vm { get; init; }
+        public required RecordingStore Store { get; init; }
+        public required Overhaul Overhaul { get; init; }
+        public required Project Project { get; init; }
+        public required DonorLibraryModel Library { get; init; }
+        public required RecordingNavigation Navigation { get; init; }
+        public required DonorAsset DonorFemaleHeavy { get; init; }
+        public required DonorAsset DonorMaleHeavy { get; init; }
+        public required DonorAsset DonorBodyOnly { get; init; }
+        public required DonorAsset BodyPatch { get; init; }
+        public required DonorAsset PhysicsPatch { get; init; }
+    }
+
     private static class Fixtures
     {
-        public static (OverhaulViewModel Vm, RecordingStore Store, Overhaul Overhaul, RecordingNavigation Navigation,
-                       DonorAsset DonorFemaleHeavy, DonorAsset DonorMaleHeavy, DonorAsset DonorFemaleHeavyBodyOnly,
-                       DonorAsset BodyPatch, DonorAsset PhysicsPatch) Create(PatchPolicy policy = PatchPolicy.Loose)
+        public static Fixture Create(
+            PatchPolicy policy = PatchPolicy.Loose,
+            bool includeMaleSet = false,
+            IReadOnlyList<Piece>? ironFemalePieces = null)
         {
             var project = new Project(Guid.NewGuid(), "Test", "C:/Projects/Test");
-            var library = new DonorLibraryModel(Guid.NewGuid());
+            var library = project.Library;
 
             var donorFemaleHeavy = new DonorAsset(
                 Guid.Parse("aaaaaaaa-0000-0000-0000-000000000001"), "donor-f.7z", "C:/Src/df", DateTime.UtcNow, "hf",
                 DonorAssetKind.FullReplacer,
-                new[] { new DonorProvidedSet("dfset", "D1 Alpha", new[] { new Variant(Gender.Female, WeightClass.Heavy, new[] { new Piece("DFPiece", 0x11, "32 Body", "DFArma", "donor/df.nif") }) }) });
+                new[] { new DonorProvidedSet("dfset", "D1 Alpha", new[] { new Variant(Gender.Female, WeightClass.Heavy, new[] { new Piece("DFPiece", 0x11, "32 Body", "DFArma", "donor/df.nif") }) }) },
+                detectedBodySlideFiles: new[] { "body/df_slide.nif" },
+                detectedPhysicsFiles: new[] { "physics/df_hdt.xml" });
 
             var donorMaleHeavy = new DonorAsset(
                 Guid.Parse("aaaaaaaa-0000-0000-0000-000000000002"), "donor-m.7z", "C:/Src/dm", DateTime.UtcNow, "hm",
                 DonorAssetKind.FullReplacer,
-                new[] { new DonorProvidedSet("dmset", "D2 Male", new[] { new Variant(Gender.Male, WeightClass.Heavy, new[] { new Piece("DMPiece", 0x12, "32 Body", "DMArma", "donor/dm.nif") }) }) });
+                new[] { new DonorProvidedSet("dmset", "D2 Male", new[] { new Variant(Gender.Male, WeightClass.Heavy, new[] { new Piece("DMPiece", 0x12, "32 Body", "DMArma", "donor/himbo_hm.nif") }) }) });
 
             var donorBodyOnly = new DonorAsset(
                 Guid.Parse("aaaaaaaa-0000-0000-0000-000000000003"), "donor-body.7z", "C:/Src/db", DateTime.UtcNow, "hb",
@@ -213,13 +369,25 @@ public class ArmorSetDetailViewModelTests
             foreach (var a in new[] { donorFemaleHeavy, donorMaleHeavy, donorBodyOnly, bodyPatch, physicsPatch })
             {
                 library.Assets.Add(a);
-                project.Library.Assets.Add(a);
             }
 
             var ironArmor = new ArmorSet("IronArmor", "Iron Armor",
-                new[] { new Variant(Gender.Female, WeightClass.Heavy, new[] { new Piece("IronCuirassF", 0x21, "32 Body", "IronCuirassFArma", "armor/IronCuirassF.nif") }) });
+                new[] { new Variant(Gender.Female, WeightClass.Heavy, ironFemalePieces ?? new[]
+                {
+                    new Piece("IronCuirassF", 0x21, "32 Body", "IronCuirassFArma", "armor/IronCuirassF.nif"),
+                }) });
 
-            var catalog = new Catalog(new VanillaCatalogSource("C:/Game"), new[] { ironArmor });
+            var sets = new List<ArmorSet> { ironArmor };
+            if (includeMaleSet)
+            {
+                sets.Add(new ArmorSet("SteelArmor", "Steel Armor",
+                    new[] { new Variant(Gender.Male, WeightClass.Heavy, new[]
+                    {
+                        new Piece("SteelCuirassM", 0x31, "32 Body", "SteelCuirassMArma", "armor/SteelCuirassM.nif"),
+                    }) }));
+            }
+
+            var catalog = new Catalog(new VanillaCatalogSource("C:/Game"), sets);
 
             var overhaul = new Overhaul(Guid.NewGuid(), "Iron", project.Id, new VanillaCatalogSource("C:/Game"))
             {
@@ -239,7 +407,20 @@ public class ArmorSetDetailViewModelTests
             var vm = new OverhaulViewModel(session, selection, new MappingService(library), navigation, new ScriptedDialogService());
             vm.Refresh();
 
-            return (vm, store, overhaul, navigation, donorFemaleHeavy, donorMaleHeavy, donorBodyOnly, bodyPatch, physicsPatch);
+            return new Fixture
+            {
+                Vm = vm,
+                Store = store,
+                Overhaul = overhaul,
+                Project = project,
+                Library = library,
+                Navigation = navigation,
+                DonorFemaleHeavy = donorFemaleHeavy,
+                DonorMaleHeavy = donorMaleHeavy,
+                DonorBodyOnly = donorBodyOnly,
+                BodyPatch = bodyPatch,
+                PhysicsPatch = physicsPatch,
+            };
         }
     }
 }
