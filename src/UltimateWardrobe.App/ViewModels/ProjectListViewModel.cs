@@ -80,9 +80,19 @@ public sealed class ProjectListViewModel : ObservableObject
             () =>
             {
                 var selected = SelectedRecent;
-                return selected is null
+                if (selected is null)
+                {
+                    return Task.CompletedTask;
+                }
+
+                // The recent list stores the project.db path (Sprint 6.1); the open flow roots on the
+                // project folder, so derive it. Opening a recent entry recreates a missing project.db
+                // instead of alerting (user finding - a project must stay reachable even without a
+                // database, e.g. after the old db was deleted or never materialized).
+                var directory = Path.GetDirectoryName(selected.Path);
+                return string.IsNullOrEmpty(directory)
                     ? Task.CompletedTask
-                    : OpenRootAsync(selected.Path, createIfMissing: false);
+                    : OpenRootAsync(directory, createIfMissing: true);
             });
 
     /// <summary>

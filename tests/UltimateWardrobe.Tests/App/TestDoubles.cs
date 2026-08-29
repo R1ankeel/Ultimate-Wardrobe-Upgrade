@@ -19,6 +19,7 @@ internal sealed class ScriptedDialogService : IAppDialogService
 {
     public Func<string?, string?, string?> PickProjectFolder = (_, _) => null;
     public Func<string?, string?, string?> PickFolder = (_, _) => null;
+    public Func<string?, string?> PickModArchive = _ => null;
     public Func<string?, string?, string?, string?> PromptText = (_, _, _) => null;
     public bool ConfirmResult = true;
 
@@ -34,6 +35,9 @@ internal sealed class ScriptedDialogService : IAppDialogService
         FolderPickCount++;
         return Task.FromResult(PickFolder(title, initialDirectory));
     }
+
+    public Task<string?> PickModArchiveAsync(string title)
+        => Task.FromResult(PickModArchive(title));
 
     public Task<string?> PromptTextAsync(string title, string message, string? initialValue = null)
         => Task.FromResult(PromptText(title, message, initialValue));

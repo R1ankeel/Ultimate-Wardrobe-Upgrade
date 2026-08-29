@@ -249,8 +249,8 @@ public sealed class ArmorSetGrouperTests
         using var dir = new TestTempDir();
         var result = BuildFilteringGrouping(dir);
 
-        Assert.Equal(5, SkippedFor(result, SkipReason.Enchanted));
-        foreach (var editorId in new[] { "EnchMuffleBoots", "EnchOneHandedCuirass", "EnchDualRegenHelmet", "EnchLowercaseFireGauntlets", "EnchVariantBoots" })
+        Assert.Equal(7, SkippedFor(result, SkipReason.Enchanted));
+        foreach (var editorId in new[] { "EnchMuffleBoots", "EnchOneHandedCuirass", "EnchDualRegenHelmet", "EnchLowercaseFireGauntlets", "EnchVariantBoots", "DLC2EnchArmorSharedBaseBootsConjuration03", "DLC2EnchClothesMageBootsSneak02" })
         {
             Assert.DoesNotContain(result.Sets, s => s.Members.Any(m => m.EditorId == editorId));
         }
@@ -264,6 +264,36 @@ public sealed class ArmorSetGrouperTests
 
         Assert.DoesNotContain(result.Sets, s => s.Members.Any(m => m.EditorId == "EnchVariantBoots"));
         Assert.Contains(result.Sets, s => s.Members.Any(m => m.EditorId == "SharedBaseBoots"));
+    }
+
+    [Fact]
+    public void DlcPrefixedEnchantedSharedMeshVariant_SkippedAsEnchanted_BaseKitStays()
+    {
+        using var dir = new TestTempDir();
+        var result = BuildFilteringGrouping(dir);
+
+        Assert.DoesNotContain(result.Sets, s => s.Members.Any(m => m.EditorId == "DLC2EnchArmorSharedBaseBootsConjuration03"));
+        Assert.Contains(result.Sets, s => s.Members.Any(m => m.EditorId == "SharedBaseBoots"));
+    }
+
+    [Fact]
+    public void DlcPrefixedEnchantedClothesSharedMeshVariant_SkippedAsEnchanted_BaseKitStays()
+    {
+        using var dir = new TestTempDir();
+        var result = BuildFilteringGrouping(dir);
+
+        Assert.DoesNotContain(result.Sets, s => s.Members.Any(m => m.EditorId == "DLC2EnchClothesMageBootsSneak02"));
+        Assert.Contains(result.Sets, s => s.Members.Any(m => m.EditorId == "SharedMageBoots"));
+    }
+
+    [Fact]
+    public void EnchEmbeddedInAnotherWord_NotTreatedAsEnchanted_MeshSharingSurvives()
+    {
+        using var dir = new TestTempDir();
+        var result = BuildFilteringGrouping(dir);
+
+        Assert.Contains(result.Sets, s => s.Members.Any(m => m.EditorId == "ClothesWenchClothes01"));
+        Assert.Contains(result.Sets, s => s.Members.Any(m => m.EditorId == "ClothesWenchClothes02"));
     }
 
     [Fact]
@@ -285,7 +315,7 @@ public sealed class ArmorSetGrouperTests
         var set = Assert.Single(result.Sets, s => s.Id == "plainheavy");
         Assert.Equal("Plain Heavy", set.DisplayName);
         Assert.Equal(2, SkippedFor(result, SkipReason.Jewelry));
-        Assert.Equal(5, SkippedFor(result, SkipReason.Enchanted));
+        Assert.Equal(7, SkippedFor(result, SkipReason.Enchanted));
         Assert.Equal(0, SkippedFor(result, SkipReason.NoSlot));
     }
 

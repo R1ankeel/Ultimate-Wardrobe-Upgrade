@@ -43,6 +43,7 @@ public sealed class OverhaulViewModel : ObservableObject
     private readonly ILogger<OverhaulViewModel> _logger;
     private readonly IAppNavigationService? _navigation;
     private readonly IAppDialogService? _dialogs;
+    private readonly IDonorImportRunner? _importRunner;
     private ArmorSetDetailViewModel? _cellEditor;
     private string _searchText = string.Empty;
     private ArmorSetStatus? _statusFilter;
@@ -56,6 +57,7 @@ public sealed class OverhaulViewModel : ObservableObject
         MappingService mapping,
         IAppNavigationService? navigation = null,
         IAppDialogService? dialogs = null,
+        IDonorImportRunner? importRunner = null,
         ILogger<OverhaulViewModel>? logger = null)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
@@ -63,6 +65,7 @@ public sealed class OverhaulViewModel : ObservableObject
         _mapping = mapping ?? throw new ArgumentNullException(nameof(mapping));
         _navigation = navigation;
         _dialogs = dialogs;
+        _importRunner = importRunner;
         _logger = logger ?? NullLogger<OverhaulViewModel>.Instance;
     }
 
@@ -185,7 +188,7 @@ public sealed class OverhaulViewModel : ObservableObject
         {
             if (_cellEditor is null)
             {
-                _cellEditor = new ArmorSetDetailViewModel(_mapping, _navigation, _dialogs);
+                _cellEditor = new ArmorSetDetailViewModel(_mapping, _navigation, _dialogs, _importRunner);
                 _cellEditor.Changed += OnCellEdited;
             }
 

@@ -74,6 +74,19 @@ public sealed class WpfUiDialogService : IAppDialogService
         return Task.FromResult(PickFolderCore(title, initialDirectory));
     }
 
+    public Task<string?> PickModArchiveAsync(string title)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = title,
+            Multiselect = false,
+            CheckFileExists = true,
+            Filter = "Mod archives (*.7z;*.zip;*.rar)|*.7z;*.zip;*.rar|All files (*.*)|*.*",
+        };
+
+        return Task.FromResult(dialog.ShowDialog() == true ? dialog.FileName : null);
+    }
+
     public Task<string?> PromptTextAsync(string title, string message, string? initialValue = null)
     {
         return Task.FromResult(PromptTextWindow(title, message, initialValue));

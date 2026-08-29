@@ -11,6 +11,9 @@ public interface IAppDialogService
 
     Task<string?> PickFolderAsync(string title, string initialDirectory);
 
+    /// <summary>Picks one donor mod archive (.7z / .zip / .rar). Returns null on cancel.</summary>
+    Task<string?> PickModArchiveAsync(string title);
+
     Task<string?> PromptTextAsync(string title, string message, string? initialValue = null);
 
     Task<bool> ConfirmAsync(string title, string message);

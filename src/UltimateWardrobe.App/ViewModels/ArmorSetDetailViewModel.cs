@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using UltimateWardrobe.App.Infrastructure;
+using UltimateWardrobe.App.Services;
 using UltimateWardrobe.App.Views;
 using UltimateWardrobe.Core.Domain;
 using UltimateWardrobe.Core.Enums;
@@ -39,6 +40,7 @@ public sealed class ArmorSetDetailViewModel : ObservableObject
     private readonly MappingService _mapping;
     private readonly IAppNavigationService? _navigation;
     private readonly IAppDialogService? _dialogs;
+    private readonly IDonorImportRunner? _importRunner;
     private readonly ILogger<ArmorSetDetailViewModel> _logger;
 
     private Overhaul? _overhaul;
@@ -48,7 +50,7 @@ public sealed class ArmorSetDetailViewModel : ObservableObject
     private Project? _project;
     private IReadOnlyList<PieceInventoryRowViewModel> _rows = Array.Empty<PieceInventoryRowViewModel>();
 
-    private IRelayCommand? _loadDonorCommand;
+    private IAsyncRelayCommand? _loadDonorCommand;
     private IRelayCommand? _loadBodyPatchCommand;
     private IRelayCommand? _loadPhysicsPatchCommand;
     private IRelayCommand? _clearBodyPatchCommand;
@@ -59,11 +61,13 @@ public sealed class ArmorSetDetailViewModel : ObservableObject
         MappingService mapping,
         IAppNavigationService? navigation = null,
         IAppDialogService? dialogs = null,
+        IDonorImportRunner? importRunner = null,
         ILogger<ArmorSetDetailViewModel>? logger = null)
     {
         _mapping = mapping ?? throw new ArgumentNullException(nameof(mapping));
         _navigation = navigation;
         _dialogs = dialogs;
+        _importRunner = importRunner;
         _logger = logger ?? NullLogger<ArmorSetDetailViewModel>.Instance;
     }
 
@@ -236,8 +240,14 @@ public sealed class ArmorSetDetailViewModel : ObservableObject
         set => SetProperty(ref _selectedPhysicsPatch, value);
     }
 
-    public IRelayCommand LoadDonorCommand =>
-        _loadDonorCommand ??= new RelayCommand(() => LoadDonor(SelectedDonor?.Asset));
+    /// <summary>
+    /// "Load Armor" picker action (user finding - a mod with an armor donor must be loadable straight
+    /// from the editor): assigns the ComboBox selection when one is made ("Change"), otherwise opens
+    /// the mod-archive picker, imports + classifies the archive as a <see cref="DonorAssetKind.FullReplacer"/>
+    /// donor through <see cref="DonorImportRunner"/>, and immediately assigns it to the whole variant.
+    /// </summary>
+    public IAsyncRelayCommand LoadDonorCommand =>
+        _loadDonorCommand ??= new AsyncRelayCommand(LoadDonorOrImportAsync);
 
     public IRelayCommand LoadBodyPatchCommand =>
         _loadBodyPatchCommand ??= new RelayCommand(() => LoadBodyPatch(SelectedBodyPatch?.Asset));
@@ -344,6 +354,70 @@ public sealed class ArmorSetDetailViewModel : ObservableObject
         SelectPatchesForCurrentState();
         AfterEdit();
         UnloadDonorIfUnreferenced(previousDonor);
+    }
+
+    /// <summary>
+    /// The "Load Armor" command body (user finding): a ComboBox selection wins (Change); otherwise the
+    /// user is pointed at a mod archive which is imported + classified and, when it truly is a
+    /// <see cref="DonorAssetKind.FullReplacer"/> covering the variant's gender/weight, assigned in one
+    /// step. A cancelled picker or an unusable archive leaves the editor untouched (the archive stays
+    /// in the library so the user can inspect/reclassify it on the Donor Library screen).
+    /// </summary>
+    private async Task LoadDonorOrImportAsync()
+    {
+        if (SelectedDonor is not null)
+        {
+            LoadDonor(SelectedDonor.Asset);
+            return;
+        }
+
+        if (!IsOpen || _library is null || _project is null || _variant is null || _overhaul is null
+            || _importRunner is null || _dialogs is null)
+        {
+            return;
+        }
+
+        var archive = await _dialogs.PickModArchiveAsync(
+            "Load Armor - choose the donor mod archive (.7z, .zip, .rar)");
+        if (string.IsNullOrWhiteSpace(archive))
+        {
+            return;
+        }
+
+        IReadOnlyList<DonorAsset> imported;
+        try
+        {
+            imported = await _importRunner.ImportAsync(
+                new[] { archive },
+                _project.RootPath,
+                _library,
+                _overhaul.Catalog,
+                progress: null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Importing the donor '{Archive}' from the replacement editor failed.", archive);
+            await _dialogs.AlertAsync("Import failed", ex.Message);
+            return;
+        }
+
+        var asset = imported.FirstOrDefault();
+        if (asset is null)
+        {
+            return;
+        }
+
+        if (asset.Kind != DonorAssetKind.FullReplacer
+            || !DonorCompatibility.IsCompatible(asset, _variant.Gender, _variant.Weight))
+        {
+            await _dialogs.AlertAsync(
+                "Donor not usable",
+                $"'{DonorCompatibility.DisplayName(asset)}' was classified as {DonorPresentation.KindText(asset.Kind)} and provides no "
+                + $"{_variant.Gender} {_variant.Weight} variant. It stays in the donor library - check it on the Donor Library screen.");
+            return;
+        }
+
+        LoadDonor(asset);
     }
 
     /// <summary>Attaches one specific BodyConversion patch to every mapping of the variant (Phase 3 command kept).</summary>

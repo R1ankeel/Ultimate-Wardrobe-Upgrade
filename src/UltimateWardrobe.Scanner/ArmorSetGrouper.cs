@@ -396,9 +396,37 @@ public sealed class ArmorSetGrouper
 
     private static bool IsEnchantedSharedMeshVariant(CorrelatedArmor armor, IReadOnlySet<string> sharedMeshes)
     {
-        return armor.EditorId.StartsWith("Ench", StringComparison.OrdinalIgnoreCase)
+        return IsEnchantedEditorId(armor.EditorId)
                && armor.MeshPath is not null
                && sharedMeshes.Contains(armor.MeshPath);
+    }
+
+    /// <summary>
+    /// True when an EditorID marks a vanilla enchanted armor/clothing record. Skyrim's own variants
+    /// start with <c>EnchArmor...</c> / <c>EnchClothes...</c> (for example
+    /// <c>EnchArmorIronHelmetFortifyOneHanded01</c> and <c>EnchClothesWarlockRobesMagickaRate02</c>),
+    /// while the DLC (Dawnguard/Dragonborn) prefix them further, for example
+    /// <c>DLC2EnchArmorChitinLightCuirassConjuration03</c> - so "Ench" is matched only when it begins
+    /// a token (start of the ID or after a digit such as a DLC prefix); a strict "Ench" prefix let the
+    /// whole DLC family through (Sprint 6.9 user finding), and matching the bare substring would
+    /// misidentify words that merely contain "ench" (for example "Wench..."). Enchanted records that
+    /// own a unique mesh are still kept by the caller via the shared-mesh guard.
+    /// </summary>
+    private static bool IsEnchantedEditorId(string editorId)
+    {
+        const string token = "Ench";
+        var index = 0;
+        while ((index = editorId.IndexOf(token, index, StringComparison.OrdinalIgnoreCase)) >= 0)
+        {
+            if (index == 0 || !char.IsLetter(editorId[index - 1]))
+            {
+                return true;
+            }
+
+            index += token.Length;
+        }
+
+        return false;
     }
 
     private static bool HasArmorKeyword(CorrelatedArmor armor, RecordIndex index)

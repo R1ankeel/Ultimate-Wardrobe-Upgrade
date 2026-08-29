@@ -5,6 +5,7 @@ using UltimateWardrobe.App.ViewModels;
 using UltimateWardrobe.Core.Domain;
 using UltimateWardrobe.Core.Enums;
 using UltimateWardrobe.Mapping;
+using UltimateWardrobe.Tests.Persistence;
 
 namespace UltimateWardrobe.Tests.App;
 
@@ -315,6 +316,140 @@ public class ArmorSetDetailViewModelTests
         d.Navigation.Navigated.Should().Contain(typeof(UltimateWardrobe.App.Views.DonorLibraryView));
     }
 
+    [Fact]
+    public async Task LoadArmor_command_with_selection_assigns_the_selected_donor()
+    {
+        var d = Fixtures.Create();
+        var vm = d.Vm;
+        vm.Activate(vm.CellAt(0, 0, 0)!);
+        var editor = vm.CellEditor;
+
+        editor.SelectedDonor = editor.AvailableDonors.Single(o => o.Asset == d.DonorFemaleHeavy);
+
+        await vm.CellEditor.LoadDonorCommand.ExecuteAsync(null);
+
+        d.Overhaul.Mappings.Should().ContainSingle(m => m.DonorAssetId == d.DonorFemaleHeavy.ImportId);
+        editor.HasCurrentDonor.Should().BeTrue();
+        editor.LoadDonorLabel.Should().Be("Change");
+    }
+
+    [Fact]
+    public async Task LoadArmor_without_selection_picks_and_imports_a_donor_archive()
+    {
+        var root = TestHelpers.NewTempDir("UW_Editor_");
+        try
+        {
+            var archive = Path.Combine(root, "mod-donor.7z");
+            File.WriteAllText(archive, "fake");
+
+            var import = new ScriptedDonorImportRunner
+            {
+                OnImport = static (paths, root, library, _, _, _) =>
+                {
+                    var asset = new DonorAsset(
+                        Guid.NewGuid(),
+                        Path.GetFileName(paths[0]),
+                        root,
+                        DateTime.UtcNow,
+                        "hash-imported",
+                        DonorAssetKind.FullReplacer,
+                        new[]
+                        {
+                            new DonorProvidedSet("importedset", "Imported Donor",
+                                new[] { new Variant(Gender.Female, WeightClass.Heavy, new[]
+                                {
+                                    new Piece("IPiece", 0x11, "32 Body", "IArma", "donor/imported.nif"),
+                                }) }),
+                        });
+                    library.Assets.Add(asset);
+                    return Task.FromResult<IReadOnlyList<DonorAsset>>(new[] { asset });
+                },
+            };
+            var catalog = new Catalog(new VanillaCatalogSource("C:/Game"), new[] { new ArmorSet("IronArmor", "Iron Armor",
+                new[] { new Variant(Gender.Female, WeightClass.Heavy, new[]
+                {
+                    new Piece("IronCuirassF", 0x21, "32 Body", "IronCuirassFArma", "armor/IronCuirassF.nif"),
+                }) }) });
+            var project = new Project(Guid.NewGuid(), "Test", "C:/Projects/Test");
+            var library = project.Library;
+            var overhaul = new Overhaul(Guid.NewGuid(), "Iron", project.Id, new VanillaCatalogSource("C:/Game"))
+            {
+                Catalog = catalog,
+            };
+            project.Overhauls.Add(overhaul);
+
+            var store = new RecordingStore();
+            var session = new ProjectSession();
+            session.Open(project, "C:/Projects/Test/project.db", store);
+            var selection = new OverhaulSelection();
+            selection.Select(overhaul.Id);
+
+            var dialogs = new ScriptedDialogService { PickModArchive = _ => archive };
+            var vm = new OverhaulViewModel(
+                session, selection, new MappingService(library), new RecordingNavigation(), dialogs, import);
+            vm.Refresh();
+
+            vm.Activate(vm.CellAt(0, 0, 0)!);
+            vm.CellEditor.HasCurrentDonor.Should().BeFalse();
+            vm.CellEditor.SelectedDonor.Should().BeNull();
+
+            await vm.CellEditor.LoadDonorCommand.ExecuteAsync(null);
+
+            import.Calls.Should().ContainSingle(c => c.Paths.SequenceEqual(new[] { archive }));
+            library.Assets.Should().Contain(a => a.OriginalFileName == "mod-donor.7z");
+            vm.CellEditor.HasCurrentDonor.Should().BeTrue("the imported donor is assigned to the variant in one step");
+        }
+        finally
+        {
+            TestHelpers.DeleteDirectoryRetry(root);
+        }
+    }
+
+    [Fact]
+    public async Task LoadArmor_cancelled_picker_does_nothing()
+    {
+        var root = TestHelpers.NewTempDir("UW_Editor_");
+        try
+        {
+            var import = new ScriptedDonorImportRunner();
+            var catalog = new Catalog(new VanillaCatalogSource("C:/Game"), new[] { new ArmorSet("IronArmor", "Iron Armor",
+                new[] { new Variant(Gender.Female, WeightClass.Heavy, new[]
+                {
+                    new Piece("IronCuirassF", 0x21, "32 Body", "IronCuirassFArma", "armor/IronCuirassF.nif"),
+                }) }) });
+            var project = new Project(Guid.NewGuid(), "Test", "C:/Projects/Test");
+            var library = project.Library;
+            var overhaul = new Overhaul(Guid.NewGuid(), "Iron", project.Id, new VanillaCatalogSource("C:/Game"))
+            {
+                Catalog = catalog,
+            };
+            project.Overhauls.Add(overhaul);
+
+            var store = new RecordingStore();
+            var session = new ProjectSession();
+            session.Open(project, "C:/Projects/Test/project.db", store);
+            var selection = new OverhaulSelection();
+            selection.Select(overhaul.Id);
+
+            var dialogs = new ScriptedDialogService(); // PickModArchive defaults to null (cancel)
+            var vm = new OverhaulViewModel(
+                session, selection, new MappingService(library), new RecordingNavigation(), dialogs, import);
+            vm.Refresh();
+
+            vm.Activate(vm.CellAt(0, 0, 0)!);
+
+            await vm.CellEditor.LoadDonorCommand.ExecuteAsync(null);
+
+            import.Calls.Should().BeEmpty("a cancelled picker never imports");
+            vm.CellEditor.HasCurrentDonor.Should().BeFalse("no picker selection means no import and no assignment");
+            overhaul.Mappings.Should().BeEmpty();
+        }
+        finally
+        {
+            TestHelpers.DeleteDirectoryRetry(root);
+        }
+    }
+
     private sealed class Fixture
     {
         public required OverhaulViewModel Vm { get; init; }
@@ -335,7 +470,8 @@ public class ArmorSetDetailViewModelTests
         public static Fixture Create(
             PatchPolicy policy = PatchPolicy.Loose,
             bool includeMaleSet = false,
-            IReadOnlyList<Piece>? ironFemalePieces = null)
+            IReadOnlyList<Piece>? ironFemalePieces = null,
+            IDonorImportRunner? importRunner = null)
         {
             var project = new Project(Guid.NewGuid(), "Test", "C:/Projects/Test");
             var library = project.Library;
@@ -404,7 +540,7 @@ public class ArmorSetDetailViewModelTests
             selection.Select(overhaul.Id);
 
             var navigation = new RecordingNavigation();
-            var vm = new OverhaulViewModel(session, selection, new MappingService(library), navigation, new ScriptedDialogService());
+            var vm = new OverhaulViewModel(session, selection, new MappingService(library), navigation, new ScriptedDialogService(), importRunner);
             vm.Refresh();
 
             return new Fixture

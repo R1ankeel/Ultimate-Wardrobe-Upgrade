@@ -66,6 +66,26 @@ internal static class SyntheticFilteringUniverse
 
     public static FormKey EnchUniqueRobeAddonKey => new(Mod, 0xF45);
 
+    public static FormKey DlcEnchVariantBootsKey => new(Mod, 0xF46);
+
+    public static FormKey DlcEnchVariantBootsAddonKey => new(Mod, 0xF47);
+
+    public static FormKey SharedMageBootsKey => new(Mod, 0xF50);
+
+    public static FormKey SharedMageBootsAddonKey => new(Mod, 0xF51);
+
+    public static FormKey DlcEnchClothesVariantBootsKey => new(Mod, 0xF52);
+
+    public static FormKey DlcEnchClothesVariantBootsAddonKey => new(Mod, 0xF53);
+
+    public static FormKey WenchClothes01Key => new(Mod, 0xF60);
+
+    public static FormKey WenchClothes01AddonKey => new(Mod, 0xF61);
+
+    public static FormKey WenchClothes02Key => new(Mod, 0xF62);
+
+    public static FormKey WenchClothes02AddonKey => new(Mod, 0xF63);
+
     public static FormKey PlainCuirassKey => new(Mod, 0xF30);
 
     public static FormKey PlainCuirassAddonKey => new(Mod, 0xF31);
@@ -102,6 +122,29 @@ internal static class SyntheticFilteringUniverse
             BipedObjectFlag.Feet, ArmorType.HeavyArmor, meshName: "shared_daedric_boots.nif");
         AddArmor(mod, EnchUniqueRobeKey, EnchUniqueRobeAddonKey, "EnchUniqueRobe", "Robes of Quickening",
             BipedObjectFlag.Body, ArmorType.Clothing, meshName: "unique_warlock_robe.nif");
+
+        // Sprint 6.9 DLC-prefixed enchanted variant: the DLC names its variants with a DLC prefix
+        // before "Ench" (e.g. DLC2EnchArmor...), which the former strict "Ench" prefix rule missed.
+        // It reuses the same base-kit mesh and must be dropped just like the base-game Ench* variant.
+        AddArmor(mod, DlcEnchVariantBootsKey, DlcEnchVariantBootsAddonKey,
+            "DLC2EnchArmorSharedBaseBootsConjuration03", "DLC2 Ench Armor Daedric Boots Conjuration03",
+            BipedObjectFlag.Feet, ArmorType.HeavyArmor, meshName: "shared_daedric_boots.nif");
+
+        // Enchanted CLOTHING variants, not just armor: the DLC names those DLC*EnchClothes..., and
+        // base-game mage robes are EnchClothes... Mage Boots/Mage Robes variants reuse the base-kit
+        // garment mesh and must be dropped too.
+        AddArmor(mod, SharedMageBootsKey, SharedMageBootsAddonKey, "SharedMageBoots", "Mage Boots",
+            BipedObjectFlag.Feet, ArmorType.Clothing, meshName: "shared_mage_boots.nif");
+        AddArmor(mod, DlcEnchClothesVariantBootsKey, DlcEnchClothesVariantBootsAddonKey,
+            "DLC2EnchClothesMageBootsSneak02", "DLC2 Ench Clothes Mage Boots Sneak02",
+            BipedObjectFlag.Feet, ArmorType.Clothing, meshName: "shared_mage_boots.nif");
+
+        // Guard: "Ench" embedded in another word (Wench...) is NOT the enchantment marker. Two Wench
+        // outfits sharing a mesh must BOTH stay - the substring match must not misidentify them.
+        AddArmor(mod, WenchClothes01Key, WenchClothes01AddonKey, "ClothesWenchClothes01", "Wench Clothes01",
+            BipedObjectFlag.Body, ArmorType.Clothing, meshName: "shared_wench_outfit.nif");
+        AddArmor(mod, WenchClothes02Key, WenchClothes02AddonKey, "ClothesWenchClothes02", "Wench Clothes02",
+            BipedObjectFlag.Body, ArmorType.Clothing, meshName: "shared_wench_outfit.nif");
 
         AddArmor(mod, PlainCuirassKey, PlainCuirassAddonKey, "PlainHeavyCuirass", "Steel Cuirass",
             BipedObjectFlag.Body, ArmorType.HeavyArmor);

@@ -244,6 +244,86 @@ public class ProjectListViewModelTests
     }
 
     [Fact]
+    public async Task OpenRecent_existing_db_resolves_session_from_folder()
+    {
+        var root = TestHelpers.NewTempDir("UW_List_");
+        try
+        {
+            var projectDir = Path.Combine(root, "projA");
+            Directory.CreateDirectory(projectDir);
+            var dbPath = Path.Combine(projectDir, "project.db");
+            var original = new Project(Guid.NewGuid(), "projA", projectDir);
+            await new ProjectStore(dbPath).SaveAsync(original);
+
+            var recent = new RecentProjectsStore(Path.Combine(root, "settings.json"));
+            recent.AddRecentProject(dbPath);
+
+            var session = new ProjectSession(new ProjectStoreFactory());
+            var vm = new ProjectListViewModel(
+                recent,
+                new ProjectStoreFactory(),
+                session,
+                new ScriptedDialogService());
+            await vm.InitializeAsync();
+
+            var closed = 0;
+            vm.CloseRequested += () => closed++;
+            vm.SelectedRecent = vm.RecentProjects.Single();
+
+            await vm.OpenSelectedRecentCommand.ExecuteAsync(null);
+
+            session.IsOpen.Should().BeTrue();
+            session.Project!.Id.Should().Be(original.Id);
+            session.Project!.RootPath.Should().Be(Path.GetFullPath(projectDir));
+            closed.Should().Be(1);
+        }
+        finally
+        {
+            TestHelpers.DeleteDirectoryRetry(root);
+        }
+    }
+
+    [Fact]
+    public async Task OpenRecent_missing_db_recreates_db_and_opens()
+    {
+        var root = TestHelpers.NewTempDir("UW_List_");
+        try
+        {
+            var projectDir = Path.Combine(root, "projA");
+            Directory.CreateDirectory(projectDir);
+            var dbPath = Path.Combine(projectDir, "project.db");
+            File.Exists(dbPath).Should().BeFalse("the missing database is the point of this test");
+
+            var recent = new RecentProjectsStore(Path.Combine(root, "settings.json"));
+            recent.AddRecentProject(dbPath);
+
+            var session = new ProjectSession(new ProjectStoreFactory());
+            var vm = new ProjectListViewModel(
+                recent,
+                new ProjectStoreFactory(),
+                session,
+                new ScriptedDialogService());
+            await vm.InitializeAsync();
+
+            var closed = 0;
+            vm.CloseRequested += () => closed++;
+            vm.SelectedRecent = vm.RecentProjects.Single();
+
+            await vm.OpenSelectedRecentCommand.ExecuteAsync(null);
+
+            File.Exists(dbPath).Should().BeTrue("opening a recent project without a db recreates it");
+            session.IsOpen.Should().BeTrue();
+            session.Project!.RootPath.Should().Be(Path.GetFullPath(projectDir));
+            session.Project!.Name.Should().Be("projA");
+            closed.Should().Be(1);
+        }
+        finally
+        {
+            TestHelpers.DeleteDirectoryRetry(root);
+        }
+    }
+
+    [Fact]
     public void No_switch_or_close_project_command_is_exposed()
     {
         CommandNameLeak.Check(typeof(ProjectListViewModel));
