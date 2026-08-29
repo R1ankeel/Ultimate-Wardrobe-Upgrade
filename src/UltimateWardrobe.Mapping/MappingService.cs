@@ -343,6 +343,14 @@ public sealed class MappingService
 
         doneOverrides ??= new Dictionary<string, bool>();
 
+        // C4 - single-pass indexing to avoid O(S * M) scans per progress call
+        var bySet = mappings.ToLookup(m => m.TargetArmorSetId);
+        var byKey = new Dictionary<(string SetId, string PieceId, Gender Gender), PieceMapping>(mappings.Count);
+        foreach (var m in mappings)
+        {
+            byKey[(m.TargetArmorSetId, m.TargetPieceEditorId, m.TargetGender)] = m;
+        }
+
         var notStarted = 0;
         var inProgress = 0;
         var mapped = 0;
@@ -351,7 +359,7 @@ public sealed class MappingService
 
         foreach (var set in catalog.Sets)
         {
-            var status = GetArmorSetStatus(set, mappings);
+            var status = GetArmorSetStatusFast(set, bySet, byKey);
             switch (status)
             {
                 case ArmorSetStatus.NotStarted:
@@ -387,6 +395,37 @@ public sealed class MappingService
             NeedsPatch = needsPatch,
             Done = done
         };
+    }
+
+    private static ArmorSetStatus GetArmorSetStatusFast(
+        ArmorSet catalogSet,
+        ILookup<string, PieceMapping> bySet,
+        Dictionary<(string SetId, string PieceId, Gender Gender), PieceMapping> byKey)
+    {
+        var totalPieces = 0;
+        var mappedPieces = 0;
+        var anyNeedsPatch = false;
+
+        foreach (var variant in catalogSet.Variants)
+        {
+            foreach (var piece in variant.Pieces)
+            {
+                totalPieces++;
+                if (byKey.TryGetValue((catalogSet.Id, piece.EditorId, variant.Gender), out var m))
+                {
+                    mappedPieces++;
+                    if (m.Status == MappingStatus.NeedsPatch)
+                    {
+                        anyNeedsPatch = true;
+                    }
+                }
+            }
+        }
+
+        if (mappedPieces == 0) return ArmorSetStatus.NotStarted;
+        if (anyNeedsPatch) return ArmorSetStatus.NeedsPatch;
+        if (mappedPieces == totalPieces) return ArmorSetStatus.Mapped;
+        return ArmorSetStatus.InProgress;
     }
 
     private static (string SetId, Gender Gender) ResolveTargetContext(Catalog catalog, Piece targetPiece)

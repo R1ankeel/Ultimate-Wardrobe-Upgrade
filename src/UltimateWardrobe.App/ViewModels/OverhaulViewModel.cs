@@ -8,6 +8,8 @@ using UltimateWardrobe.Core.Domain;
 using UltimateWardrobe.Core.Enums;
 using UltimateWardrobe.Mapping;
 
+using DonorLibraryModel = UltimateWardrobe.Core.Domain.DonorLibrary;
+
 namespace UltimateWardrobe.App.ViewModels;
 
 /// <summary>A label + optional status filter value for the matrix header filter.</summary>
@@ -44,12 +46,16 @@ public sealed class OverhaulViewModel : ObservableObject
     private readonly IAppNavigationService? _navigation;
     private readonly IAppDialogService? _dialogs;
     private readonly IDonorImportRunner? _importRunner;
+    private readonly IBackgroundTaskService? _backgroundTasks;
     private ArmorSetDetailViewModel? _cellEditor;
     private string _searchText = string.Empty;
     private ArmorSetStatus? _statusFilter;
     private MatrixCellViewModel? _activeCell;
     private bool _isEditorOpen;
     private IRelayCommand<MatrixCellViewModel>? _activateCellCommand;
+    private CancellationTokenSource? _filterCts;
+    private int _filterGeneration;
+    private string _progressLabel = string.Empty;
 
     public OverhaulViewModel(
         IProjectSession session,
@@ -58,11 +64,13 @@ public sealed class OverhaulViewModel : ObservableObject
         IAppNavigationService? navigation = null,
         IAppDialogService? dialogs = null,
         IDonorImportRunner? importRunner = null,
+        IBackgroundTaskService? backgroundTasks = null,
         ILogger<OverhaulViewModel>? logger = null)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _selection = selection ?? throw new ArgumentNullException(nameof(selection));
         _mapping = mapping ?? throw new ArgumentNullException(nameof(mapping));
+        _backgroundTasks = backgroundTasks;
         _navigation = navigation;
         _dialogs = dialogs;
         _importRunner = importRunner;
@@ -90,18 +98,8 @@ public sealed class OverhaulViewModel : ObservableObject
 
     public string ProgressLabel
     {
-        get
-        {
-            var overhaul = Current;
-            var catalog = overhaul?.Catalog;
-            if (catalog is null || overhaul is null)
-            {
-                return string.Empty;
-            }
-
-            var progress = _mapping.GetOverhaulProgress(overhaul.Mappings, catalog);
-            return $"{progress.Done} done / {progress.Mapped} mapped / {progress.NeedsPatch} need patch / {progress.TotalSets} total";
-        }
+        get => _progressLabel;
+        private set => SetProperty(ref _progressLabel, value);
     }
 
     public string SearchText
@@ -111,7 +109,7 @@ public sealed class OverhaulViewModel : ObservableObject
         {
             if (SetProperty(ref _searchText, value))
             {
-                Refresh();
+                RequestFilter();
             }
         }
     }
@@ -123,7 +121,7 @@ public sealed class OverhaulViewModel : ObservableObject
         {
             if (SetProperty(ref _statusFilter, value))
             {
-                Refresh();
+                RequestFilter();
             }
         }
     }
@@ -240,16 +238,158 @@ public sealed class OverhaulViewModel : ObservableObject
             Columns = Array.Empty<MatrixColumnViewModel>();
             Sections = Array.Empty<MatrixSectionViewModel>();
             MatrixItems = Array.Empty<MatrixItemViewModel>();
+            ProgressLabel = string.Empty;
             RaiseMatrixChanged();
             return;
         }
 
         var matrix = OverhaulMatrix.Build(
             catalog, overhaul.Mappings, _session.Project!.Library, _mapping, _searchText, _statusFilter);
-        Columns = matrix.Columns;
+        var progress = _mapping.GetOverhaulProgress(overhaul.Mappings, catalog);
+        var progressLabel = $"{progress.Done} done / {progress.Mapped} mapped / {progress.NeedsPatch} need patch / {progress.TotalSets} total";
+        ApplyMatrixResult(matrix, progressLabel);
+    }
+
+    private void RequestFilter()
+    {
+        if (_backgroundTasks is null)
+        {
+            RecomputeMatrix();
+            return;
+        }
+
+        ScheduleFilterAsync();
+    }
+
+    private void ScheduleFilterAsync()
+    {
+        _filterCts?.Cancel();
+        _filterCts?.Dispose();
+        _filterCts = new CancellationTokenSource();
+        var token = _filterCts.Token;
+        var generation = Interlocked.Increment(ref _filterGeneration);
+
+        var overhaul = Current;
+        var catalog = overhaul?.Catalog;
+        if (overhaul is null || catalog is null)
+        {
+            Columns = Array.Empty<MatrixColumnViewModel>();
+            Sections = Array.Empty<MatrixSectionViewModel>();
+            MatrixItems = Array.Empty<MatrixItemViewModel>();
+            ProgressLabel = string.Empty;
+            RaiseMatrixChanged();
+            return;
+        }
+
+        var searchSnapshot = _searchText;
+        var statusSnapshot = _statusFilter;
+        var mappingsSnapshot = overhaul.Mappings.ToList();
+        var library = _session.Project!.Library;
+        var libraryCopy = new DonorLibraryModel(library.ProjectId);
+        foreach (var asset in library.Assets)
+        {
+            libraryCopy.Assets.Add(asset);
+        }
+
+        _ = FilterAsync(catalog, mappingsSnapshot, libraryCopy, searchSnapshot, statusSnapshot, generation, token);
+    }
+
+    private async Task FilterAsync(
+        Catalog catalog,
+        List<PieceMapping> mappingsSnapshot,
+        DonorLibraryModel libraryCopy,
+        string searchSnapshot,
+        ArmorSetStatus? statusSnapshot,
+        int generation,
+        CancellationToken token)
+    {
+        OverhaulMatrixViewModel? matrix = null;
+        string progressLabel = string.Empty;
+        try
+        {
+            await _backgroundTasks!.RunAsync("Filter matrix", ct =>
+            {
+                ct.ThrowIfCancellationRequested();
+                matrix = OverhaulMatrix.Build(catalog, mappingsSnapshot, libraryCopy, _mapping, searchSnapshot, statusSnapshot);
+                var progress = _mapping.GetOverhaulProgress(mappingsSnapshot, catalog);
+                progressLabel = $"{progress.Done} done / {progress.Mapped} mapped / {progress.NeedsPatch} need patch / {progress.TotalSets} total";
+                return Task.CompletedTask;
+            }, token).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Filter matrix failed.");
+            return;
+        }
+
+        if (token.IsCancellationRequested)
+        {
+            return;
+        }
+
+        if (generation != Volatile.Read(ref _filterGeneration))
+        {
+            return;
+        }
+
+        if (matrix is null)
+        {
+            Sections = Array.Empty<MatrixSectionViewModel>();
+            MatrixItems = Array.Empty<MatrixItemViewModel>();
+            ProgressLabel = progressLabel;
+            RaiseMatrixChangedWithoutColumns();
+            return;
+        }
+
+        ApplyMatrixResult(matrix, progressLabel);
+    }
+
+    private void ApplyMatrixResult(OverhaulMatrixViewModel matrix, string progressLabel)
+    {
+        var columnsChanged = !AreColumnsEqual(Columns, matrix.Columns);
+        if (columnsChanged)
+        {
+            Columns = matrix.Columns;
+        }
+
         Sections = matrix.Sections;
         MatrixItems = matrix.MatrixItems;
-        RaiseMatrixChanged();
+        ProgressLabel = progressLabel;
+        if (columnsChanged)
+        {
+            RaiseMatrixChanged();
+        }
+        else
+        {
+            RaiseMatrixChangedWithoutColumns();
+        }
+    }
+
+    private static bool AreColumnsEqual(IReadOnlyList<MatrixColumnViewModel> a, IReadOnlyList<MatrixColumnViewModel> b)
+    {
+        if (ReferenceEquals(a, b))
+        {
+            return true;
+        }
+
+        if (a.Count != b.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < a.Count; i++)
+        {
+            if (a[i].Weight != b[i].Weight)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private void RaiseMatrixChanged()
@@ -258,6 +398,16 @@ public sealed class OverhaulViewModel : ObservableObject
         OnPropertyChanged(nameof(HasCatalog));
         OnPropertyChanged(nameof(IsEmpty));
         OnPropertyChanged(nameof(Columns));
+        OnPropertyChanged(nameof(Sections));
+        OnPropertyChanged(nameof(MatrixItems));
+        OnPropertyChanged(nameof(ProgressLabel));
+    }
+
+    private void RaiseMatrixChangedWithoutColumns()
+    {
+        OnPropertyChanged(nameof(OverhaulName));
+        OnPropertyChanged(nameof(HasCatalog));
+        OnPropertyChanged(nameof(IsEmpty));
         OnPropertyChanged(nameof(Sections));
         OnPropertyChanged(nameof(MatrixItems));
         OnPropertyChanged(nameof(ProgressLabel));
@@ -342,8 +492,125 @@ public sealed class OverhaulViewModel : ObservableObject
     private void OnCellEdited(object? sender, EventArgs e)
     {
         // Re-project the matrix after an edit so the grid never diverges; keep the editor open.
-        RecomputeMatrix();
+        // Use async path when background service is available to avoid blocking UI on large catalogs.
+        if (_backgroundTasks is null)
+        {
+            RecomputeMatrixPreserveEditor();
+        }
+        else
+        {
+            ScheduleFilterPreserveEditorAsync();
+        }
+
         _ = AutosaveAsync();
+    }
+
+    private void RecomputeMatrixPreserveEditor()
+    {
+        var overhaul = Current;
+        var catalog = overhaul?.Catalog;
+        if (overhaul is null || catalog is null)
+        {
+            Columns = Array.Empty<MatrixColumnViewModel>();
+            Sections = Array.Empty<MatrixSectionViewModel>();
+            MatrixItems = Array.Empty<MatrixItemViewModel>();
+            ProgressLabel = string.Empty;
+            RaiseMatrixChanged();
+            return;
+        }
+
+        var matrix = OverhaulMatrix.Build(
+            catalog, overhaul.Mappings, _session.Project!.Library, _mapping, _searchText, _statusFilter);
+        var progress = _mapping.GetOverhaulProgress(overhaul.Mappings, catalog);
+        var progressLabel = $"{progress.Done} done / {progress.Mapped} mapped / {progress.NeedsPatch} need patch / {progress.TotalSets} total";
+        ApplyMatrixResult(matrix, progressLabel);
+    }
+
+    private void ScheduleFilterPreserveEditorAsync()
+    {
+        _filterCts?.Cancel();
+        _filterCts?.Dispose();
+        _filterCts = new CancellationTokenSource();
+        var token = _filterCts.Token;
+        var generation = Interlocked.Increment(ref _filterGeneration);
+
+        var overhaul = Current;
+        var catalog = overhaul?.Catalog;
+        if (overhaul is null || catalog is null)
+        {
+            Columns = Array.Empty<MatrixColumnViewModel>();
+            Sections = Array.Empty<MatrixSectionViewModel>();
+            MatrixItems = Array.Empty<MatrixItemViewModel>();
+            ProgressLabel = string.Empty;
+            RaiseMatrixChanged();
+            return;
+        }
+
+        var searchSnapshot = _searchText;
+        var statusSnapshot = _statusFilter;
+        var mappingsSnapshot = overhaul.Mappings.ToList();
+        var library = _session.Project!.Library;
+        var libraryCopy = new DonorLibraryModel(library.ProjectId);
+        foreach (var asset in library.Assets)
+        {
+            libraryCopy.Assets.Add(asset);
+        }
+
+        _ = FilterPreserveEditorAsync(catalog, mappingsSnapshot, libraryCopy, searchSnapshot, statusSnapshot, generation, token);
+    }
+
+    private async Task FilterPreserveEditorAsync(
+        Catalog catalog,
+        List<PieceMapping> mappingsSnapshot,
+        DonorLibraryModel libraryCopy,
+        string searchSnapshot,
+        ArmorSetStatus? statusSnapshot,
+        int generation,
+        CancellationToken token)
+    {
+        OverhaulMatrixViewModel? matrix = null;
+        string progressLabel = string.Empty;
+        try
+        {
+            await _backgroundTasks!.RunAsync("Filter matrix (preserve editor)", ct =>
+            {
+                ct.ThrowIfCancellationRequested();
+                matrix = OverhaulMatrix.Build(catalog, mappingsSnapshot, libraryCopy, _mapping, searchSnapshot, statusSnapshot);
+                var progress = _mapping.GetOverhaulProgress(mappingsSnapshot, catalog);
+                progressLabel = $"{progress.Done} done / {progress.Mapped} mapped / {progress.NeedsPatch} need patch / {progress.TotalSets} total";
+                return Task.CompletedTask;
+            }, token).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Filter matrix (preserve editor) failed.");
+            return;
+        }
+
+        if (token.IsCancellationRequested)
+        {
+            return;
+        }
+
+        if (generation != Volatile.Read(ref _filterGeneration))
+        {
+            return;
+        }
+
+        if (matrix is null)
+        {
+            Sections = Array.Empty<MatrixSectionViewModel>();
+            MatrixItems = Array.Empty<MatrixItemViewModel>();
+            ProgressLabel = progressLabel;
+            RaiseMatrixChangedWithoutColumns();
+            return;
+        }
+
+        ApplyMatrixResult(matrix, progressLabel);
     }
 
     private async Task AutosaveAsync()

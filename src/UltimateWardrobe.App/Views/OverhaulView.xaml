@@ -75,7 +75,7 @@
       </ItemsControl>
 
       <StackPanel Orientation="Horizontal" Margin="0,16,0,12">
-        <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+        <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged, Delay=250}"
                  Width="260"
                  VerticalContentAlignment="Center" />
         <ComboBox ItemsSource="{Binding StatusOptions}"
@@ -110,82 +110,113 @@
       </Grid>
     </StackPanel>
 
-    <!-- Matrix body: one flat virtualized list of section headers + row bands (Sprint 6.8 rework).
-         A single VirtualizingStackPanel inside the scroll viewport realizes only on-screen rows, so a
-         multi-thousand-row catalog no longer materializes the whole grid (manual-testing bug 3). The
-         top margin keeps the vertical slider's grip clear of the window close button (bug 4). -->
-    <ScrollViewer Grid.Row="2"
-                  Margin="0,20,0,0"
-                  Visibility="{Binding IsEmpty, Converter={StaticResource InverseBoolToVis}}"
-                  CanContentScroll="True"
-                  VirtualizingPanel.IsVirtualizing="True"
-                  VirtualizingPanel.VirtualizationMode="Recycling">
-      <ItemsControl ItemsSource="{Binding MatrixItems}">
-        <ItemsControl.ItemsPanel>
-          <ItemsPanelTemplate>
-            <VirtualizingStackPanel />
-          </ItemsPanelTemplate>
-        </ItemsControl.ItemsPanel>
-        <ItemsControl.Resources>
-          <DataTemplate DataType="{x:Type vm:MatrixSectionHeaderViewModel}">
-            <TextBlock Text="{Binding Header}"
-                       Margin="0,14,0,6"
-                       FontWeight="SemiBold"
-                       FontSize="16"
-                       Opacity="0.9" />
-          </DataTemplate>
-          <!-- The row name is a clickable button (manual-testing bug 6): clicking an item opens the
-               popover editor for its default (set, gender, weight) coordinate even before any mapping
-               exists. The name wraps instead of truncating (manual-testing bug 5). -->
-          <DataTemplate DataType="{x:Type vm:ArmorSetRowViewModel}">
-            <Grid ColumnDefinitions="232,*">
-              <Button Click="MatrixRow_Click"
-                      Command="{Binding DataContext.ActivateCellCommand, RelativeSource={RelativeSource AncestorType=Page}}"
-                      CommandParameter="{Binding DefaultCell}"
-                      Background="Transparent"
-                      BorderThickness="0"
-                      Padding="0,4,0,4"
-                      HorizontalContentAlignment="Left"
-                      ToolTip="{Binding DisplayName}">
-                <TextBlock Text="{Binding DisplayName}"
-                           Style="{StaticResource MatrixRowName}" />
-              </Button>
-              <ItemsControl Grid.Column="1" ItemsSource="{Binding Cells}">
-                <ItemsControl.ItemsPanel>
-                  <ItemsPanelTemplate>
-                    <StackPanel Orientation="Horizontal" />
-                  </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate DataType="{x:Type vm:MatrixCellViewModel}">
-                    <Button Style="{StaticResource MatrixCellCard}"
-                            Click="MatrixCell_Click"
-                            Visibility="{Binding IsBlank, Converter={StaticResource InverseBoolToVis}}"
-                            Command="{Binding DataContext.ActivateCellCommand, RelativeSource={RelativeSource AncestorType=Page}}"
-                            CommandParameter="{Binding}">
-                      <ItemsControl ItemsSource="{Binding Lines}">
-                        <ItemsControl.ItemsPanel>
-                          <ItemsPanelTemplate>
-                            <StackPanel />
-                          </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                          <DataTemplate DataType="{x:Type vm:CellLineViewModel}">
-                            <TextBlock Text="{Binding Text}"
-                                       FontSize="12"
-                                       TextTrimming="CharacterEllipsis" />
-                          </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                      </ItemsControl>
-                    </Button>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </Grid>
-          </DataTemplate>
-        </ItemsControl.Resources>
-      </ItemsControl>
-    </ScrollViewer>
+    <!-- Matrix body: flat virtualized list of section headers + row bands (Sprint 6.8 rework, Phase B fix).
+         Previously a ScrollViewer wrapping ItemsControl with VirtualizingStackPanel - which defeats
+         virtualization because an explicit outer ScrollViewer gives infinite available height. Phase B
+         replaces it with a ListView that owns its internal ScrollViewer, so VirtualizingStackPanel
+         only realizes on-screen rows (manual-testing bug 3). Top margin keeps the vertical slider
+         clear of the window close button (bug 4). Selection chrome is suppressed so custom row
+         templates keep their visuals and ActivateCellCommand still routes; keyboard navigation via
+         ListView selection is intentionally disabled. -->
+    <ListView Grid.Row="2"
+              Margin="0,20,0,0"
+              Visibility="{Binding IsEmpty, Converter={StaticResource InverseBoolToVis}}"
+              ItemsSource="{Binding MatrixItems}"
+              Background="Transparent"
+              BorderThickness="0"
+              Padding="0"
+              ScrollViewer.CanContentScroll="True"
+              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+              ScrollViewer.VerticalScrollBarVisibility="Auto"
+              VirtualizingPanel.IsVirtualizing="True"
+              VirtualizingPanel.VirtualizationMode="Recycling"
+              VirtualizingPanel.ScrollUnit="Pixel"
+              SelectionMode="Single">
+      <ListView.ItemsPanel>
+        <ItemsPanelTemplate>
+          <VirtualizingStackPanel />
+        </ItemsPanelTemplate>
+      </ListView.ItemsPanel>
+      <ListView.ItemContainerStyle>
+        <Style TargetType="ListViewItem">
+          <Setter Property="Background" Value="Transparent" />
+          <Setter Property="BorderThickness" Value="0" />
+          <Setter Property="Padding" Value="0" />
+          <Setter Property="Margin" Value="0" />
+          <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+          <Setter Property="VerticalContentAlignment" Value="Stretch" />
+          <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+          <Style.Triggers>
+            <Trigger Property="IsSelected" Value="True">
+              <Setter Property="Background" Value="Transparent" />
+              <Setter Property="BorderBrush" Value="Transparent" />
+            </Trigger>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter Property="Background" Value="Transparent" />
+              <Setter Property="BorderBrush" Value="Transparent" />
+            </Trigger>
+          </Style.Triggers>
+        </Style>
+      </ListView.ItemContainerStyle>
+      <ListView.Resources>
+        <DataTemplate DataType="{x:Type vm:MatrixSectionHeaderViewModel}">
+          <TextBlock Text="{Binding Header}"
+                     Margin="0,14,0,6"
+                     FontWeight="SemiBold"
+                     FontSize="16"
+                     Opacity="0.9" />
+        </DataTemplate>
+        <!-- The row name is a clickable button (manual-testing bug 6): clicking an item opens the
+             popover editor for its default (set, gender, weight) coordinate even before any mapping
+             exists. The name wraps instead of truncating (manual-testing bug 5). -->
+        <DataTemplate DataType="{x:Type vm:ArmorSetRowViewModel}">
+          <Grid ColumnDefinitions="232,*">
+            <Button Click="MatrixRow_Click"
+                    Command="{Binding DataContext.ActivateCellCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                    CommandParameter="{Binding DefaultCell}"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="0,4,0,4"
+                    HorizontalContentAlignment="Left"
+                    ToolTip="{Binding DisplayName}">
+              <TextBlock Text="{Binding DisplayName}"
+                         Style="{StaticResource MatrixRowName}" />
+            </Button>
+            <ItemsControl Grid.Column="1" ItemsSource="{Binding Cells}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="{x:Type vm:MatrixCellViewModel}">
+                  <Button Style="{StaticResource MatrixCellCard}"
+                          Click="MatrixCell_Click"
+                          Visibility="{Binding IsBlank, Converter={StaticResource InverseBoolToVis}}"
+                          Command="{Binding DataContext.ActivateCellCommand, RelativeSource={RelativeSource AncestorType=Page}}"
+                          CommandParameter="{Binding}">
+                    <ItemsControl ItemsSource="{Binding Lines}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <StackPanel />
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:CellLineViewModel}">
+                          <TextBlock Text="{Binding Text}"
+                                     FontSize="12"
+                                     TextTrimming="CharacterEllipsis" />
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Grid>
+        </DataTemplate>
+      </ListView.Resources>
+    </ListView>
 
     <!-- Anchored single-cell editor popover (Phase 6 Sprint 6.5). PlacementTarget is set from the
          clicked cell in code-behind; StaysOpen=false closes on outside click / focus loss; the VM

@@ -184,6 +184,79 @@ internal static class OverhaulMatrix
         (Gender.Male, false),
     };
 
+    // C2 - catalog-level cache: columns + per-set metadata, reused across filter invocations.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Catalog, CachedCatalogData> _catalogCache = new();
+
+    private sealed class CachedCatalogData
+    {
+        public required IReadOnlyList<MatrixColumnViewModel> Columns { get; init; }
+        public required IReadOnlyDictionary<string, SetMeta> SetMetaById { get; init; }
+    }
+
+    private sealed class SetMeta
+    {
+        public required ArmorSet Set { get; init; }
+        public required string DisplayNameLower { get; init; }
+        public required bool BelongsFemale { get; init; }
+        public required bool BelongsMale { get; init; }
+        public required Dictionary<(Gender SectionGender, WeightClass Weight), Variant?> VariantBySectionWeight { get; init; }
+
+        public bool BelongsToSection(Gender sectionGender)
+            => sectionGender == Gender.Female ? BelongsFemale : BelongsMale;
+
+        public Variant? GetVariant(Gender sectionGender, WeightClass weight)
+            => VariantBySectionWeight.TryGetValue((sectionGender, weight), out var v) ? v : null;
+    }
+
+    private static CachedCatalogData GetOrCreateCachedCatalogData(Catalog catalog)
+    {
+        if (_catalogCache.TryGetValue(catalog, out var cached))
+        {
+            return cached;
+        }
+
+        var data = BuildCachedCatalogData(catalog);
+        _catalogCache.Add(catalog, data);
+        return data;
+    }
+
+    private static CachedCatalogData BuildCachedCatalogData(Catalog catalog)
+    {
+        var columns = BuildColumns(catalog);
+        var setMetaById = new Dictionary<string, SetMeta>(catalog.Sets.Count);
+        foreach (var set in catalog.Sets)
+        {
+            var displayNameLower = set.DisplayName.ToLowerInvariant();
+            var belongsFemale = set.Variants.Any(v => v.Gender == Gender.Female || v.Gender == Gender.Unisex);
+            var belongsMale = set.Variants.Any(v => v.Gender == Gender.Male || v.Gender == Gender.Unisex);
+            var variantBySectionWeight = new Dictionary<(Gender, WeightClass), Variant?>(capacity: SectionOrder.Length * columns.Count);
+            foreach (var (sectionGender, _) in SectionOrder)
+            {
+                foreach (var col in columns)
+                {
+                    var variant = set.Variants.FirstOrDefault(v =>
+                        v.Weight == col.Weight && (v.Gender == sectionGender || v.Gender == Gender.Unisex));
+                    variantBySectionWeight[(sectionGender, col.Weight)] = variant;
+                }
+            }
+
+            setMetaById[set.Id] = new SetMeta
+            {
+                Set = set,
+                DisplayNameLower = displayNameLower,
+                BelongsFemale = belongsFemale,
+                BelongsMale = belongsMale,
+                VariantBySectionWeight = variantBySectionWeight,
+            };
+        }
+
+        return new CachedCatalogData
+        {
+            Columns = columns,
+            SetMetaById = setMetaById,
+        };
+    }
+
     public static OverhaulMatrixViewModel Build(
         Catalog catalog,
         IReadOnlyList<PieceMapping> mappings,
@@ -197,9 +270,45 @@ internal static class OverhaulMatrix
         if (library is null) throw new ArgumentNullException(nameof(library));
         if (mapping is null) throw new ArgumentNullException(nameof(mapping));
 
-        var columns = BuildColumns(catalog);
-        var normalizedSearch = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
+        // C2 - reuse columns and set metadata per catalog
+        var cached = GetOrCreateCachedCatalogData(catalog);
+        var columns = cached.Columns;
+        var setMetaById = cached.SetMetaById;
 
+        // C5 - normalize search once, use lowerInvariant + Ordinal
+        var normalizedSearch = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
+        var searchLower = normalizedSearch?.ToLowerInvariant();
+
+        // C1 - index donor library: O(D) once
+        var donorById = new Dictionary<Guid, DonorAsset>(library.Assets.Count);
+        foreach (var asset in library.Assets)
+        {
+            donorById[asset.ImportId] = asset;
+        }
+
+        // C3 - index mappings: O(M) once
+        var mappingsByKey = new Dictionary<(string SetId, string PieceId, Gender Gender), PieceMapping>(mappings.Count);
+        var mappingsBySet = new Dictionary<string, List<PieceMapping>>(catalog.Sets.Count);
+        foreach (var m in mappings)
+        {
+            mappingsByKey[(m.TargetArmorSetId, m.TargetPieceEditorId, m.TargetGender)] = m;
+            if (!mappingsBySet.TryGetValue(m.TargetArmorSetId, out var list))
+            {
+                list = new List<PieceMapping>();
+                mappingsBySet[m.TargetArmorSetId] = list;
+            }
+
+            list.Add(m);
+        }
+
+        // D2 - text-search prefilter before heavy cell building: search -> BelongsToSection -> status -> cells,
+        // so non-matching sets do not pay status + cell cost. Status is computed lazily per passing set
+        // and cached per Build to avoid double compute for Unisex sets appearing in both sections.
+        // D1 - evaluated: ICollectionView over MatrixItems would still iterate S and would require
+        // keeping MatrixItems stable across filters, complicating invalidation when mappings change.
+        // Current Build with search prefilter already avoids rebuilding cells for filtered-out sets and
+        // per-filter cost is O(D + M + S_passing * P) with hash lookups, so Build is kept.
+        var statusCache = new Dictionary<string, ArmorSetStatus>(catalog.Sets.Count);
         var sections = new List<MatrixSectionViewModel>();
         var items = new List<MatrixItemViewModel>();
         foreach (var (sectionGender, _) in SectionOrder)
@@ -207,22 +316,34 @@ internal static class OverhaulMatrix
             var rows = new List<ArmorSetRowViewModel>();
             foreach (var set in catalog.Sets)
             {
-                if (!SetBelongsToSection(set, sectionGender))
+                var meta = setMetaById[set.Id];
+                if (!meta.BelongsToSection(sectionGender))
                 {
                     continue;
                 }
 
-                if (normalizedSearch is not null
-                    && !set.DisplayName.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase))
+                // C5 - search predicate on pre-lowercased name - first filter, O(1) per set
+                if (searchLower is not null
+                    && !meta.DisplayNameLower.Contains(searchLower, StringComparison.Ordinal))
                 {
                     continue;
                 }
 
-                var status = mapping.GetArmorSetStatus(set, mappings);
+                // C4 - status per passing set only, cached per Build for Unisex duplicate rows
+                if (!statusCache.TryGetValue(set.Id, out var status))
+                {
+                    status = ComputeStatusFast(set, mappingsBySet, mappingsByKey);
+                    statusCache[set.Id] = status;
+                }
                 var isMatch = statusFilter.HasValue && status == statusFilter.Value;
-                var cells = columns.Select(col => BuildCell(set, sectionGender, col.Weight, mappings, library, status, isMatch))
-                                   .ToList();
-                var defaultCell = DefaultCellFor(set, sectionGender, columns, cells);
+                var cells = new List<MatrixCellViewModel>(columns.Count);
+                foreach (var col in columns)
+                {
+                    var variant = meta.GetVariant(sectionGender, col.Weight);
+                    cells.Add(BuildCellFast(set, sectionGender, col.Weight, variant, mappingsByKey, mappingsBySet, donorById, status, isMatch));
+                }
+
+                var defaultCell = DefaultCellForFast(meta, sectionGender, columns, cells);
                 rows.Add(new ArmorSetRowViewModel(set, sectionGender, status, isMatch, cells, defaultCell));
             }
 
@@ -237,12 +358,111 @@ internal static class OverhaulMatrix
         return new OverhaulMatrixViewModel(columns, sections, items);
     }
 
+    private static ArmorSetStatus ComputeStatusFast(
+        ArmorSet set,
+        Dictionary<string, List<PieceMapping>> mappingsBySet,
+        Dictionary<(string SetId, string PieceId, Gender Gender), PieceMapping> mappingsByKey)
+    {
+        var totalPieces = 0;
+        var mappedPieces = 0;
+        var anyNeedsPatch = false;
+
+        foreach (var variant in set.Variants)
+        {
+            foreach (var piece in variant.Pieces)
+            {
+                totalPieces++;
+                if (mappingsByKey.TryGetValue((set.Id, piece.EditorId, variant.Gender), out var m))
+                {
+                    mappedPieces++;
+                    if (m.Status == MappingStatus.NeedsPatch)
+                    {
+                        anyNeedsPatch = true;
+                    }
+                }
+            }
+        }
+
+        if (mappedPieces == 0) return ArmorSetStatus.NotStarted;
+        if (anyNeedsPatch) return ArmorSetStatus.NeedsPatch;
+        if (mappedPieces == totalPieces) return ArmorSetStatus.Mapped;
+        return ArmorSetStatus.InProgress;
+    }
+
+    private static bool TryGetMappingForPiece(
+        string setId,
+        string pieceEditorId,
+        Gender variantGender,
+        Dictionary<(string SetId, string PieceId, Gender Gender), PieceMapping> mappingsByKey,
+        Dictionary<string, List<PieceMapping>> mappingsBySet,
+        out PieceMapping mapping)
+    {
+        if (mappingsByKey.TryGetValue((setId, pieceEditorId, variantGender), out mapping!))
+        {
+            return true;
+        }
+
+        // Unisex variant matches any gender mapping for that piece (original PiecesMappingsFor semantics)
+        if (variantGender == Gender.Unisex)
+        {
+            if (mappingsBySet.TryGetValue(setId, out var list))
+            {
+                foreach (var candidate in list)
+                {
+                    if (candidate.TargetPieceEditorId == pieceEditorId)
+                    {
+                        mapping = candidate;
+                        return true;
+                    }
+                }
+            }
+        }
+
+        mapping = null!;
+        return false;
+    }
+
+    private static List<PieceMapping> GetMappingsForVariantFast(
+        ArmorSet set,
+        Variant variant,
+        Dictionary<(string SetId, string PieceId, Gender Gender), PieceMapping> mappingsByKey,
+        Dictionary<string, List<PieceMapping>> mappingsBySet)
+    {
+        var result = new List<PieceMapping>(variant.Pieces.Count);
+        foreach (var piece in variant.Pieces)
+        {
+            if (TryGetMappingForPiece(set.Id, piece.EditorId, variant.Gender, mappingsByKey, mappingsBySet, out var m))
+            {
+                result.Add(m);
+            }
+        }
+
+        return result;
+    }
+
     /// <summary>
     /// Picks the editable row coordinate for the row-name click (Sprint 6.8, manual-testing bug 6):
     /// the first weight column that carries a variant for the section gender, so the popover can open
     /// even when nothing is mapped yet. Falls back to the row's first cell (never null - a row only
     /// exists when the catalog has at least one weight column).
     /// </summary>
+    private static MatrixCellViewModel DefaultCellForFast(
+        SetMeta meta,
+        Gender sectionGender,
+        IReadOnlyList<MatrixColumnViewModel> columns,
+        IReadOnlyList<MatrixCellViewModel> cells)
+    {
+        for (var i = 0; i < columns.Count; i++)
+        {
+            if (meta.GetVariant(sectionGender, columns[i].Weight) is not null)
+            {
+                return cells[i];
+            }
+        }
+
+        return cells[0];
+    }
+
     private static MatrixCellViewModel DefaultCellFor(
         ArmorSet set,
         Gender sectionGender,
@@ -305,6 +525,32 @@ internal static class OverhaulMatrix
         => set.Variants.FirstOrDefault(v =>
             v.Weight == weight && (v.Gender == sectionGender || v.Gender == Gender.Unisex));
 
+    private static MatrixCellViewModel BuildCellFast(
+        ArmorSet set,
+        Gender sectionGender,
+        WeightClass weight,
+        Variant? variant,
+        Dictionary<(string SetId, string PieceId, Gender Gender), PieceMapping> mappingsByKey,
+        Dictionary<string, List<PieceMapping>> mappingsBySet,
+        Dictionary<Guid, DonorAsset> donorById,
+        ArmorSetStatus status,
+        bool isMatch)
+    {
+        if (variant is null)
+        {
+            return MatrixCellViewModel.Blank(set, sectionGender, weight, status, isMatch);
+        }
+
+        var setMappings = GetMappingsForVariantFast(set, variant, mappingsByKey, mappingsBySet);
+        if (setMappings.Count == 0)
+        {
+            return MatrixCellViewModel.Blank(set, sectionGender, weight, status, isMatch);
+        }
+
+        var lines = BuildCardLinesFast(set, setMappings, donorById);
+        return new MatrixCellViewModel(set, sectionGender, weight, variant, lines, status, isMatch);
+    }
+
     private static MatrixCellViewModel BuildCell(
         ArmorSet set,
         Gender sectionGender,
@@ -328,6 +574,47 @@ internal static class OverhaulMatrix
 
         var lines = BuildCardLines(set, setMappings, library);
         return new MatrixCellViewModel(set, sectionGender, weight, variant, lines, status, isMatch);
+    }
+
+    private static IReadOnlyList<CellLineViewModel> BuildCardLinesFast(
+        ArmorSet set,
+        IReadOnlyList<PieceMapping> setMappings,
+        Dictionary<Guid, DonorAsset> donorById)
+    {
+        var lines = new List<CellLineViewModel> { new(set.DisplayName, CellLineRole.Set) };
+
+        var donors = setMappings.Select(m => m.DonorAssetId).Distinct();
+        foreach (var donorId in donors)
+        {
+            if (!donorById.TryGetValue(donorId, out var asset))
+            {
+                continue;
+            }
+
+            lines.Add(new CellLineViewModel(DonorDisplayName(asset), CellLineRole.Donor));
+        }
+
+        var body = setMappings.Select(m => m.BodyConversionPatchAssetId)
+            .Where(id => id.HasValue).Select(id => id!.Value).Distinct();
+        foreach (var patchId in body)
+        {
+            if (donorById.TryGetValue(patchId, out var asset))
+            {
+                lines.Add(new CellLineViewModel(DonorDisplayName(asset), CellLineRole.BodyPatch));
+            }
+        }
+
+        var physics = setMappings.Select(m => m.PhysicsPatchAssetId)
+            .Where(id => id.HasValue).Select(id => id!.Value).Distinct();
+        foreach (var patchId in physics)
+        {
+            if (donorById.TryGetValue(patchId, out var asset))
+            {
+                lines.Add(new CellLineViewModel(DonorDisplayName(asset), CellLineRole.PhysicsPatch));
+            }
+        }
+
+        return lines;
     }
 
     private static IReadOnlyList<CellLineViewModel> BuildCardLines(

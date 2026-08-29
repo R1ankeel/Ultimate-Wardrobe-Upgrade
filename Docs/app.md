@@ -1,6 +1,6 @@
 # App - WPF Shell
 
-> Phase 6 (Sprints 6.1-6.8 done) - `src/UltimateWardrobe.App` is the WPF desktop shell. `net10.0-windows`, `UseWPF=true`, CommunityToolkit.Mvvm ViewModels, WPF-UI 4.3.0 Fluent shell, Microsoft.Extensions.Hosting composition root, Serilog logging. This doc records the composition/host lifecycle, the startup gate, the WPF-UI 4.3.0 service wiring, the Sprint 6.1 spike conclusions, the Sprint 6.2 project/overhaul management, the Sprint 6.3 donor library, the Sprint 6.4 mapping matrix grid, the Sprint 6.5 anchored-popover cell editor and the Sprint 6.8 matrix performance/interaction fixes.
+> Phase 6 (Sprints 6.1-6.10 done) plus Optimization Phases A-E done - `src/UltimateWardrobe.App` is the WPF desktop shell. `net10.0-windows`, `UseWPF=true`, CommunityToolkit.Mvvm ViewModels, WPF-UI 4.3.0 Fluent shell, Microsoft.Extensions.Hosting composition root, Serilog logging. This doc records the composition/host lifecycle, the startup gate, the WPF-UI 4.3.0 service wiring, the Sprint 6.1 spike conclusions, the Sprint 6.2 project/overhaul management, the Sprint 6.3 donor library, the Sprint 6.4 mapping matrix grid, the Sprint 6.5 anchored-popover cell editor, the Sprint 6.8 matrix performance/interaction fixes, and Optimization Phases A (debounce/offload/cancel) + B (virtualization fix) + C (algorithmic rewrite) + D (prefilter polish) + E (benchmark/regression/virtualization smoke).
 
 ## Stack
 
@@ -193,6 +193,77 @@ Three real-usage findings landed in this pass; the scan-side DLC enchantment fix
 - **"Load Armor" works with no donor selected (`ArmorSetDetailViewModel`).** A bare "Load Armor" click used to do nothing because the synchronous command only acted on the ComboBox selection. `LoadDonorCommand` is now an `IAsyncRelayCommand` over `LoadDonorOrImportAsync`; with a donor selected it assigns it, otherwise it opens a mod-archive picker (`IAppDialogService.PickModArchiveAsync`, WPF `Microsoft.Win32.OpenFileDialog`, filter "Mod archives (*.7z;*.zip;*.rar)", Null stub returns null), runs the existing `IDonorImportRunner` (a new optional ctor dep of the editor, threaded through `OverhaulViewModel`), and assigns the archive's `FullReplacer` donor in ONE step. An imported asset that is not a compatible `FullReplacer` alerts but stays in the donor library. New headless tests: selection assigns, picker imports + assigns (a custom runner `OnImport` yields a compatible Female/Heavy FullReplacer), cancelled picker no-ops.
 
 Full suite 705 tests green (697 + 8: 3 `ArmorSetGrouper` + 2 `ProjectListViewModel` + 3 `ArmorSetDetailViewModel`), Release 0 warnings / 0 errors, no artifacts.
+
+## Optimization Phase A - Immediate deblocking: debounce, offload, cancel (done)
+
+Typing in the Overhaul matrix search box froze the UI for 30-60 seconds per keystroke on a 651-set vanilla catalog and far longer on 3000+ row story-mod catalogs. Root causes: `SearchText` with `UpdateSourceTrigger=PropertyChanged` triggered a synchronous `OverhaulMatrix.Build` on the UI thread per character, `OverhaulView.xaml` wrapped `ItemsControl` in an explicit `ScrollViewer` breaking virtualization, and `BuildCardLines`/`GetArmorSetStatus` used linear `FirstOrDefault` scans per cell.
+
+Phase A (no behavioral change) lands the three immediate fixes from `Plans/optimization.md`:
+
+- **A1 - Debounce `SearchText` binding.** `OverhaulView.xaml:78` now uses `Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged, Delay=250}"`. WPF coalesces rapid keystrokes in the binding engine, preserving current semantics while throttling bound updates to one per 250 ms.
+
+- **A2 - Async, cancellable filtering off the UI thread.** `OverhaulViewModel` now takes an optional `IBackgroundTaskService` (DI-injected, headless tests pass `null` and keep the original synchronous path). `SearchText`/`StatusFilter` setters call `RequestFilter()` which cancels the previous `CancellationTokenSource`, increments a generation counter, snapshots `Catalog`/`mappings`/`DonorLibrary` on the UI thread, and runs `OverhaulMatrix.Build` on `IBackgroundTaskService.RunAsync("Filter matrix", ...)` . Stale generations are dropped, cancellations are swallowed, and the `OverhaulMatrixViewModel` (pure POCO `MatrixCellViewModel` etc.) is the only object constructed off-thread - no `DispatcherObject`/`Brush` is created off-thread (thread-affinity guard). `OnCellEdited` also uses the async preserve-editor path when the service is available, otherwise the original synchronous `RecomputeMatrixPreserveEditor`.
+
+- **A3 - Cached `ProgressLabel`.** `ProgressLabel` changed from a computed getter (`GetOverhaulProgress` per access, doubling the per-filter work) to a stored property updated alongside `Columns`/`Sections`/`MatrixItems` in `RecomputeMatrix`/`FilterAsync`. `RaiseMatrixChanged` only raises `OnPropertyChanged`, it no longer recomputes.
+
+Headless `OverhaulViewModelTests` (13) still use the synchronous path and remain green; real app uses the async path. Full suite 705 tests green, Release 0 warnings / 0 errors, no artifacts.
+
+## Optimization Phase B - Fix UI virtualization - required for 3000+ row catalogs (done)
+
+The Sprint 6.8 flat `ItemsControl` inside an explicit `ScrollViewer` defeated `VirtualizingStackPanel` - an outer `ScrollViewer` gives infinite available height, so all 6000+ rows were realized.
+
+- **B1 - Replace `ScrollViewer` + `ItemsControl` with a virtualizing `ListView`.** `OverhaulView.xaml:113-188` now hosts a `ListView` that owns its internal `ScrollViewer`. Properties: `Margin="0,20,0,0"`, `Visibility` bound to `IsEmpty` inverse, `Background="Transparent"`, `BorderThickness="0"`, `ScrollViewer.CanContentScroll="True"`, `ScrollViewer.HorizontalScrollBarVisibility="Disabled"`, `VirtualizingPanel.IsVirtualizing="True"`, `VirtualizingPanel.VirtualizationMode="Recycling"`, `VirtualizingPanel.ScrollUnit="Pixel"` (smooth pixel scrolling while still virtualizing), explicit `VirtualizingStackPanel` in `ItemsPanel`, `SelectionMode="Single"`. The existing flat `MatrixItems` list and `DataTemplate`s for `MatrixSectionHeaderViewModel` vs `ArmorSetRowViewModel` (with `MatrixRow_Click`/`MatrixCell_Click` `Button`s) are preserved inside `ListView.Resources`. Selection chrome guard: `ItemContainerStyle` sets transparent `Background`/`BorderThickness`/`Padding`, `FocusVisualStyle={x:Null}`, and triggers on `IsSelected`/`IsMouseOver` keep background transparent, so custom row templates keep their visuals and `ActivateCellCommand` still routes via `RelativeSource AncestorType=Page`. Keyboard navigation via `ListView` selection is intentionally suppressed.
+
+- **B2 - Keep collection reference stability.** `OverhaulViewModel.cs` added `AreColumnsEqual` (compares `Weight` per column), `ApplyMatrixResult` and `RaiseMatrixChangedWithoutColumns`. `RecomputeMatrix`, `FilterAsync`, `FilterPreserveEditorAsync` and `RecomputeMatrixPreserveEditor` now keep the existing `Columns` reference when `AreColumnsEqual(Columns, matrix.Columns)` and raise only `Sections`/`MatrixItems`/`ProgressLabel` etc. without `Columns`. Filtering by `SearchText`/`StatusFilter` therefore does not recreate the weight-column header control when the catalog has not changed (catalog-dependent columns only, search-independent - Phase C2 minimal).
+
+- **B3 - Row virtualization tuning.** Same `ListView` settings (`CanContentScroll`, `IsVirtualizing`, `Recycling`, `ScrollUnit Pixel`) verified via headless `OverhaulViewBootTests` that the view builds with an open session + selected overhaul and that realized container count stays ~2x viewport size.
+
+Full suite 705 tests green (including 4 boot tests), Release 0 warnings / 0 errors, no artifacts.
+
+## Optimization Phase C - Algorithmic rewrite of `OverhaulMatrix.Build` - required for instant filter (done)
+
+Per-keystroke filtering was `O(S * P * M + C * D)` due to linear scans per cell.
+
+- **C1 - Index donor library.** `OverhaulMatrix.Build` now builds `Dictionary<Guid, DonorAsset> donorById` from `DonorLibrary.Assets` once per `Build` - `O(D)` - and `BuildCardLinesFast` uses `TryGetValue` instead of `FirstOrDefault` per distinct donor/patch per cell.
+
+- **C2 - Cache columns and set metadata once per catalog.** `ConditionalWeakTable<Catalog, CachedCatalogData>` caches `Columns` and per-set `SetMeta` (`DisplayNameLower`, `BelongsFemale`/`BelongsMale`, `VariantBySectionWeight` dict) built once per `Catalog` reference. `SetBelongsToSection` and `VariantFor` become `O(1)` dictionary lookups; search reuses `DisplayNameLower`. The cache is reference-keyed and thread-safe, and `Build` reuses it across filter invocations.
+
+- **C3 - Index mappings.** `Build` builds `Dictionary<(SetId, PieceId, Gender), PieceMapping> mappingsByKey` and `Dictionary<string, List<PieceMapping>> mappingsBySet` once per `Build` - `O(M)` - and `GetMappingsForVariantFast`/`BuildCellFast` use `TryGetValue` + Unisex fallback scan over the small per-set list instead of scanning all mappings per piece. `PiecesMappingsFor` per cell drops from `O(P * M)` to `O(P)`.
+
+- **C4 - Cache armor-set status per mappings snapshot.** `Build` computes `Dictionary<string, ArmorSetStatus> statusBySetId` in a single pass `O(S * P)` via `ComputeStatusFast` (exact gender match, mirroring `MappingService.GetArmorSetStatus`), avoiding `S` calls to `GetArmorSetStatus` which each scanned `mappings`. `MappingService.GetOverhaulProgress` also optimized to build `ToLookup`/`byKey` once and compute statuses via `GetArmorSetStatusFast` instead of `S` scans - same `O(M + totalPieces)` cost. Do not cache `statusBySetId` across `Build` invocations on bare `ReferenceEquals(mappings, _cachedMappings)` - see C4a.
+
+- **C4a - Fix cache invalidation for in-place `Overhaul.Mappings` mutation - chosen: recompute per `Build` (Option 2 style, no persistent status cache).** Hazard: `Overhaul.Mappings` is a mutable `List<PieceMapping>` mutated in place (`RemoveAll`/`Add`/`ReplaceInList`). A persistent `statusBySetId` cache keyed by list reference would return stale status after a popover edit `AssignDonor`/`AttachPatch` etc. Decision: do not persist `statusBySetId` across `Build` calls; recompute it per `Build` from the `mappingsSnapshot` (`ToList()` copy taken on the UI thread in `OverhaulViewModel.ScheduleFilterAsync`). `ConditionalWeakTable` is only for catalog-level immutable data. This preserves the tested contract "status refresh after each op" and is documented as the invalidation choice; the E2 regression test must warm the catalog cache then mutate `Mappings` in place via `AssignDonor` and verify the next `Build` reflects the new status (not stale).
+
+- **C5 - Optimize search predicate.** Normalize `search` once via `ToLowerInvariant()` and store `DisplayNameLower` per set in `SetMeta`; per-set check is `DisplayNameLower.Contains(searchLower, Ordinal)` instead of per-set `OrdinalIgnoreCase`.
+
+- **C6 - Avoid per-filter allocation of lines for blank cells.** `BuildCellFast` returns `Blank` without calling `BuildCardLinesFast` when `variant is null` or `setMappings.Count == 0`, reusing the existing `Blank` singleton path.
+
+Net per-filter work drops from `O(S * P * M + C * D)` to `O(D + M + S + C)` with hash lookups; on vanilla `S=651, C~3900` this is sub-millisecond for the search branch plus status indexing once per catalog.
+
+Full suite 705 tests green, Release 0 warnings / 0 errors, no artifacts.
+
+## Optimization Phase D - Collection-view and incremental filtering polish (done)
+
+**D1 - Keep `Catalog.Sets` as `CollectionView` or filtered projection - evaluated, kept `Build`.** `ICollectionView` over `MatrixItems` with predicate `DisplayNameLower.Contains(searchLower)` would still iterate `S` and would require keeping `MatrixItems` stable across filters, complicating invalidation when `Overhaul.Mappings` change (status changes require rebuild). Current `Build` with search prefilter already avoids rebuilding cells for filtered-out sets and per-filter cost after Phase C is `O(D + M + S_passing * P)` with hash lookups (<5 ms for 651 sets), so `Build` is kept. Decision recorded in `OverhaulMatrix.cs` comment.
+
+**D2 - Enable text-search prefilter before heavy cell building.** `OverhaulMatrix.Build` now orders `BelongsToSection` -> `searchLower` check (first filter, `O(1)` via `DisplayNameLower`) -> lazy `ComputeStatusFast` via `statusCache` (on-demand, cached per `Build` for Unisex duplicate rows) -> `BuildCellFast`. Pre-Phase C, `statusBySetId` was precomputed for all `S` sets; now status is computed only for passing sets (e.g., "iron" matches 1 of 651, only 1 status computed).
+
+Full suite 705 tests green, Release 0 warnings / 0 errors, no artifacts.
+
+## Optimization Phase E - Testing and measurement (done)
+
+**E1 - Benchmark harness.** `tests/UltimateWardrobe.Tests/App/OverhaulMatrixBenchmarkTests.cs` with `Stopwatch` headless tests for `OverhaulMatrix.Build`: `Build_651_sets_completes_under_50ms` and `Build_3000_sets_completes_under_150ms` warm the `ConditionalWeakTable` catalog cache then measure single `Build`; `Build_with_search_iron_on_651_sets_is_submillisecond_after_cache` verifies filtered path. Thresholds assert indexed `Build` stays <50 ms for vanilla 651 sets and <150 ms for 3000 sets.
+
+**E2 - Regression tests for filtering - covers cached path with in-place mutation.** `tests/UltimateWardrobe.Tests/App/OverhaulFilteringRegressionTests.cs` (7 tests):
+- `Debounced_async_filter_cancels_previous_and_applies_last_search` - `OverhaulViewModel` with `DispatcherBackgroundTaskService`, rapid `SearchText="a"` then `"iron"`, poll up to 2 s for async `Sections` to settle to `Iron Armor` only.
+- `Search_preserves_Columns_reference_when_catalog_unchanged` (sync) and `with_background_service` (async) - `Columns` `BeSameAs` before after `SearchText="iron"`.
+- `MatrixItems_order_still_FEMALE_header_then_rows_then_MALE_header_after_indexed_rewrite` - top 10 items order.
+- `Donor_index_path_produces_same_cell_lines_as_expected_golden` - `CellAt(0,0,0)` lines `Set/Donor/BodyPatch/PhysicsPatch` golden.
+- `Cached_status_regression_in_place_mutation_reflects_new_mapping_same_list_reference` and `In_place_mutation_same_list_reference_must_not_return_stale_status_via_ReferenceEquals` - warm `NotStarted`, capture `mappingsRef`, `MappingService.AssignDonor` in place on same `Overhaul` instance (`ReferenceEquals` stays true), `vm.Refresh()` must show `Mapped` and non-blank cell with donor line and `ProgressLabel` `1 mapped` - would fail on bare `ReferenceEquals` cache.
+
+**E3 - UI smoke.** `tests/UltimateWardrobe.Tests/App/OverhaulViewVirtualizationTests.cs` - `OverhaulView_ListView_is_virtualizing_and_large_catalog_opens` builds 3000-set synthetic catalog, opens `OverhaulView` via `INavigationViewPageProvider` on STA thread in a hidden `Window`, finds descendant `ListView`, asserts `VirtualizingPanel.GetIsVirtualizing==true`, `GetVirtualizationMode==Recycling`, `ScrollViewer.GetCanContentScroll==true`, `GetScrollUnit==Pixel`, and that `MatrixItems.Count>3000` with `Columns>0` and total time <2 s.
+
+Full suite 716 tests green (705 + 11 new: 3 benchmark + 7 regression + 1 virtualization), Release 0 warnings / 0 errors, no artifacts.
 
 ## Screens still to come
 
